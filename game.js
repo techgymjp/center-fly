@@ -1,16 +1,13 @@
 'use strict';
 // センターフライ — 100球のセンターフライを全部捕れるか?
-// 座標系: ホームベースが原点、+y がセンター方向(画面の上)、+x がライト方向。単位はメートル。
+// 座標系: ホームベースが原点、+y がセンター方向、+x がライト方向、z が高さ。単位はメートル。
+// 画面は野手の背中越しにホームを見る視点(描画は scene3d.js)。
 (() => {
   // ---------- 定数 ----------
   const W = 960, H = 640;
-  const S = 7;            // 1m あたりのピクセル数
-  const Y0 = 40;          // 画面下端のワールド y
-  const ZS = 3;           // 高さ 1m あたりの画面上オフセット(擬似3D)
   const G = 9.8;
   const FENCE = 122;      // フェンスまでの距離
   const WALL_H = 3.0;     // フェンスの高さ
-  const TRACK = 116;      // ウォーニングトラック開始
   const HOME_POS = { x: 0, y: 92 };
   const TOTAL = 100;
 
@@ -93,7 +90,7 @@
 
   // ---------- 入力 ----------
   const keys = new Set();
-  const input = { mx: 0, my: 0, dash: false, jump: false, dive: false };
+  const input = { mx: 0, my: 0, sx: 0, sy: 0, dash: false, jump: false, dive: false };
   const pressed = { jump: false, dive: false, start: false };
   let bot = null; // テスト用: (state) => input を返す関数
 
@@ -178,6 +175,17 @@
   canvas.addEventListener('pointerup', releasePointer);
   canvas.addEventListener('pointercancel', releasePointer);
 
+  // カメラの前方(野手からホームへ向かう方向)
+  function forward(f) {
+    const d = Math.hypot(f.x, f.y) || 1;
+    return { x: -f.x / d, y: -f.y / d };
+  }
+  function toWorld(mx, my, f) {
+    const F = forward(f);
+    // 画面の右 = 前方を時計回りに90°回した方向
+    return { x: my * F.x + mx * F.y, y: my * F.y - mx * F.x };
+  }
+
   function readInput() {
     if (bot) {
       const b = bot(state);
@@ -199,7 +207,9 @@
     }
     let dash = keys.has('Shift') || keys.has(' ') || keys.has('c');
     for (const v of pointers.values()) if (v === 'dash') dash = true;
-    input.mx = mx; input.my = my; input.dash = dash;
+    // 画面基準(上=ホーム方向)の入力をワールド方向へ
+    const w = toWorld(mx, my, state.fielder);
+    input.mx = w.x; input.my = w.y; input.sx = mx; input.sy = my; input.dash = dash;
     input.jump = pressed.jump; input.dive = pressed.dive;
   }
 
@@ -211,7 +221,7 @@
     catches: 0, misses: 0, score: 0, streak: 0, bestStreak: 0,
     tech: { dive: 0, jump: 0, hr: 0, running: 0 },
     phaseT: 0, overT: 0,
-    ball: null, fielder: null,
+    ball: null, fielder: newFielder(),
     popups: [],
     lastResult: null,
     best: loadBest(),
@@ -593,199 +603,46 @@
     }
   }
 
-  // ---------- 描画 ----------
-  const wx = (x) => W / 2 + x * S;
-  const wy = (y) => H - (y - Y0) * S;
-  const XMAX = W / 2 / S;
-
-  function arcPoints(r, n = 60) {
-    // 画面内に収まる x 範囲で半径 r の円弧(左→右)
-    const pts = [];
-    const xm = Math.min(r, XMAX + 1);
-    for (let i = 0; i <= n; i++) {
-      const x = -xm + (2 * xm) * i / n;
-      pts.push([x, Math.sqrt(Math.max(0, r * r - x * x))]);
-    }
-    return pts;
-  }
-
-  function fillRing(r1, r2, color) {
-    const a = arcPoints(r2), b = arcPoints(r1).reverse();
-    ctx.beginPath();
-    a.forEach(([x, y], i) => (i ? ctx.lineTo(wx(x), wy(y)) : ctx.moveTo(wx(x), wy(y))));
-    b.forEach(([x, y]) => ctx.lineTo(wx(x), wy(y)));
-    ctx.closePath();
-    ctx.fillStyle = color;
-    ctx.fill();
-  }
-
-  function drawField() {
-    // ファウルゾーン
-    ctx.fillStyle = '#2f6b33';
-    ctx.fillRect(0, 0, W, H);
-
-    // フェアゾーンの芝(縞模様)
+  // ---------- 描画(2D オーバーレイ) ----------
+  // 3D 画面の外にあるボールの方向を示す
+  function drawBallIndicator() {
+    const b = state.ball;
+    if (!b || b.waiting || b.caught || b.landed) return;
+    const p = Scene3D.project(b.x, b.y, b.z);
+    const inside = !p.behind && p.x > 0 && p.x < W && p.y > 0 && p.y < H;
+    if (inside) return;
     ctx.save();
-    ctx.beginPath();
-    ctx.moveTo(wx(0), wy(0));
-    ctx.lineTo(wx(-200), wy(200));
-    ctx.lineTo(wx(200), wy(200));
-    ctx.closePath();
-    ctx.clip();
-    ctx.fillStyle = '#3c8a3f';
-    ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = '#43954a';
-    for (let x = -72; x < 72; x += 12) ctx.fillRect(wx(x), 0, 6 * S, H);
-    ctx.restore();
-
-    // ウォーニングトラック
-    fillRing(TRACK, FENCE, '#b98a56');
-    // スタンド
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(W, 0);
-    arcPoints(FENCE + 0.8).reverse().forEach(([x, y]) => ctx.lineTo(wx(x), wy(y)));
-    ctx.closePath();
-    ctx.fillStyle = '#20262e';
-    ctx.fill();
-    // 観客のドット
-    ctx.fillStyle = '#323b46';
-    for (let sy = 4; sy < wy(FENCE + 6); sy += 9) {
-      for (let sx = (sy % 18 ? 4 : 9); sx < W; sx += 10) {
-        const x = (sx - W / 2) / S, y = (H - sy) / S + Y0;
-        if (Math.hypot(x, y) > FENCE + 3) ctx.fillRect(sx, sy, 4, 4);
-      }
-    }
-    // フェンス
-    fillRing(FENCE, FENCE + 0.8, '#1f4d2a');
-    ctx.strokeStyle = '#f2d23c';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    arcPoints(FENCE + 0.8).forEach(([x, y], i) => (i ? ctx.lineTo(wx(x), wy(y)) : ctx.moveTo(wx(x), wy(y))));
-    ctx.stroke();
-
-    // ファウルライン
-    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(wx(0), wy(0)); ctx.lineTo(wx(-FENCE * 0.7071), wy(FENCE * 0.7071));
-    ctx.moveTo(wx(0), wy(0)); ctx.lineTo(wx(FENCE * 0.7071), wy(FENCE * 0.7071));
-    ctx.stroke();
-
-    // 守備位置マーク
-    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(wx(HOME_POS.x), wy(HOME_POS.y), 10, 0, Math.PI * 2);
-    ctx.stroke();
-
-    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.fillStyle = '#ffe14d';
     ctx.font = 'bold 14px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('122m', wx(0), wy(FENCE + 2.2));
-  }
-
-  function drawShadow(x, y, rx, ry, alpha) {
-    ctx.fillStyle = `rgba(0,0,0,${alpha})`;
-    ctx.beginPath();
-    ctx.ellipse(wx(x), wy(y), rx, ry, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  function drawFielder(f) {
-    const sx = wx(f.x), sy = wy(f.y);
-    const h = jumpHeight(f);
-    drawShadow(f.x, f.y, 13, 7, 0.35);
-    ctx.save();
-    ctx.translate(sx, sy - h * ZS * 3);
-    if (f.mode === 'dive' || f.mode === 'down') {
-      const ang = Math.atan2(f.dir.x, f.dir.y);
-      ctx.rotate(ang);
-      // 体を伸ばした姿勢(上方向が進行方向)
-      ctx.fillStyle = f.mode === 'down' ? '#d9dde3' : '#ffffff';
+    if (p.behind) {
+      // 頭上を越えて背後へ
+      const ax = W / 2;
       ctx.beginPath();
-      ctx.ellipse(0, 0, 7, 15, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#1d2f6f';
-      ctx.beginPath(); ctx.arc(0, -10, 6, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#8a5a2b';
-      ctx.beginPath(); ctx.arc(4, -20, 5, 0, Math.PI * 2); ctx.fill();
+      ctx.moveTo(ax, H - 8); ctx.lineTo(ax - 14, H - 30); ctx.lineTo(ax + 14, H - 30);
+      ctx.closePath(); ctx.fill();
+      ctx.fillText('頭上を越える!', ax, H - 36);
     } else {
-      // 体
-      const fx = Math.sin(f.face), fy = -Math.cos(f.face);
-      // 肩(向きに直交する楕円)
-      ctx.save();
-      ctx.rotate(f.face);
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath(); ctx.ellipse(0, 0, 13, 8, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#1d2f6f'; ctx.lineWidth = 2; ctx.stroke();
-      ctx.restore();
-      // 帽子とつば(向いている方向)
-      ctx.fillStyle = '#1d2f6f';
-      ctx.beginPath(); ctx.arc(fx * 6, fy * 6, 4.5, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(0, 0, 6.5, 0, Math.PI * 2); ctx.fill();
-      // グラブ
-      const gx = Math.sin(f.face - 1.2), gy = -Math.cos(f.face - 1.2);
-      ctx.fillStyle = '#9a6430';
-      ctx.beginPath(); ctx.arc(gx * 14, gy * 14 - (f.mode === 'jump' ? 8 : 0), 5.5, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = '#5a3818'; ctx.lineWidth = 1; ctx.stroke();
+      const ax = Math.max(20, Math.min(W - 20, p.x));
+      const ay = Math.max(20, Math.min(H - 20, p.y));
+      const ang = Math.atan2(p.y - H / 2, p.x - W / 2);
+      ctx.translate(ax, ay);
+      ctx.rotate(ang);
+      ctx.beginPath();
+      ctx.moveTo(14, 0); ctx.lineTo(-8, -10); ctx.lineTo(-8, 10);
+      ctx.closePath(); ctx.fill();
+      ctx.rotate(-ang);
+      ctx.fillText(Math.round(b.z) + 'm', 0, p.y < 0 ? 28 : -16);
     }
     ctx.restore();
-    if (f.dashing && f.mode === 'run') {
-      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-      ctx.lineWidth = 2;
-      for (let i = 0; i < 3; i++) {
-        const bx = sx - f.vx * 2.2 + (i - 1) * 5, by = sy + f.vy * 2.2;
-        ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx - f.vx * 1.5, by + f.vy * 1.5); ctx.stroke();
-      }
-    }
   }
 
-  function drawBall(b) {
-    if (b.waiting) return;
-    // 軌跡
-    for (let i = 0; i < b.trail.length; i++) {
-      const p = b.trail[i];
-      ctx.fillStyle = `rgba(255,255,255,${0.05 + 0.25 * i / b.trail.length})`;
-      ctx.beginPath();
-      ctx.arc(wx(p.x), wy(p.y) - p.z * ZS, 2 + p.z * 0.06, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    const sx = wx(b.x), sy = wy(b.y) - b.z * ZS;
-    // 影とボールを結ぶ補助線(高さの目安)
-    if (b.z > 0.5) {
-      ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-      ctx.lineWidth = 1;
-      ctx.setLineDash([3, 4]);
-      ctx.beginPath(); ctx.moveTo(sx, wy(b.y)); ctx.lineTo(sx, sy); ctx.stroke();
-      ctx.setLineDash([]);
-    }
-    const sr = Math.max(3.5, 6 - b.z * 0.08);
-    drawShadow(b.x, b.y, sr, sr * 0.6, 0.55);
-    const r = 3.5 + b.z * 0.11;
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = '#c0392b'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.arc(sx - r * 0.3, sy, r * 0.7, -0.9, 0.9); ctx.stroke();
-
-    // 画面外(下)にあるときの矢印
-    if (sy > H - 4 || wy(b.y) > H) {
-      const ax = Math.max(16, Math.min(W - 16, sx));
-      ctx.fillStyle = '#ffe14d';
-      ctx.beginPath();
-      ctx.moveTo(ax, H - 26); ctx.lineTo(ax - 10, H - 8); ctx.lineTo(ax + 10, H - 8);
-      ctx.closePath(); ctx.fill();
-      ctx.font = 'bold 12px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(Math.round(b.z) + 'm', ax, H - 30);
-    }
-  }
-
+  // ミニマップ(画面と同じ向き: ホームが上)
   function drawMinimap() {
     const mx = W - 168, my = 12, mw = 156, mh = 136;
     const ms = mh / 132;
-    const tx = (x) => mx + mw / 2 + x * ms;
-    const ty = (y) => my + mh - 4 - y * ms;
+    const tx = (x) => mx + mw / 2 - x * ms;
+    const ty = (y) => my + 4 + y * ms;
     ctx.fillStyle = 'rgba(0,0,0,0.55)';
     ctx.fillRect(mx, my, mw, mh);
     ctx.save();
@@ -802,9 +659,6 @@
     ctx.beginPath();
     ctx.moveTo(tx(0), ty(0)); ctx.lineTo(tx(19.4), ty(19.4)); ctx.lineTo(tx(0), ty(38.8)); ctx.lineTo(tx(-19.4), ty(19.4));
     ctx.closePath(); ctx.fill();
-    // 表示範囲
-    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-    ctx.strokeRect(tx(-XMAX), ty(Y0 + H / S), XMAX * 2 * ms, H / S * ms);
     const f = state.fielder;
     if (f) {
       ctx.fillStyle = '#9fe8ff';
@@ -877,7 +731,7 @@
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
     ctx.beginPath(); ctx.arc(RING.x, RING.y, RING.r, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 2; ctx.stroke();
-    const mx = input.mx, my = input.my;
+    const mx = input.sx, my = input.sy;
     const mag = Math.hypot(mx, my);
     const cur = mag > 0.1 ? Math.atan2(mx, my) : null;
     for (let i = 0; i < 16; i++) {
@@ -894,8 +748,8 @@
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
     ctx.font = 'bold 12px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('バック', RING.x, RING.y - RING.r - 6);
-    ctx.fillText('前進', RING.x, RING.y + RING.r + 15);
+    ctx.fillText('前進', RING.x, RING.y - RING.r - 6);
+    ctx.fillText('バック', RING.x, RING.y + RING.r + 15);
     // ノブ
     const kx = RING.x + mx * RING.r * 0.6, ky = RING.y - my * RING.r * 0.6;
     ctx.fillStyle = mag > 0.1 ? '#ffe14d' : 'rgba(255,255,255,0.6)';
@@ -951,7 +805,7 @@
   }
 
   function drawTitle() {
-    ctx.fillStyle = 'rgba(8,14,20,0.72)';
+    ctx.fillStyle = 'rgba(8,14,20,0.55)';
     ctx.fillRect(0, 0, W, H);
     centerText('センターフライ', 150, 76, '#ffe14d', '900');
     centerText('100球のフライ、全部捕れるか!?', 205, 26);
@@ -962,8 +816,8 @@
       'ダッシュ : ダッシュボタン長押し / Shift・Space(スタミナ消費)',
       'ジャンプ : Z  — フェンス際の打球はジャンプで「ホームランキャッチ」',
       'ダイブ : X  — 前に落ちるライナーは飛び込んで捕れ!',
-      '捕球は自動。ボールの「影」が地面の位置、白い球が高さを表す。',
-      '右上のミニマップで打球の方向を早めに読もう。',
+      '捕球は自動。芝に落ちるボールの「影」で落下点を読もう。',
+      '右上のミニマップ(ホームが上)で打球の方向を早めにつかめ。',
     ];
     lines.forEach((l, i) => ctx.fillText(l, W / 2, 262 + i * 30));
     if (state.best) centerText(`ベスト: ${state.best.catches} / ${TOTAL} 球  (SCORE ${state.best.score})`, 470, 20, '#9fe8ff');
@@ -980,7 +834,7 @@
   }
 
   function drawOver() {
-    ctx.fillStyle = 'rgba(8,14,20,0.78)';
+    ctx.fillStyle = 'rgba(8,14,20,0.68)';
     ctx.fillRect(0, 0, W, H);
     centerText('ゲームセット', 120, 54, '#ffffff', '900');
     centerText(`${state.catches} / ${TOTAL} 球 捕球`, 200, 48, state.catches === TOTAL ? '#ffe14d' : '#9fe8ff', '900');
@@ -998,13 +852,11 @@
   }
 
   function draw() {
-    drawField();
-    const b = state.ball, f = state.fielder;
-    if (f) {
-      // 高い位置にあるボールは野手より手前に描く
-      if (b && !b.waiting && b.z < 1) { drawBall(b); drawFielder(f); } else { drawFielder(f); if (b) drawBall(b); }
-    }
+    ctx.setTransform(overlayScale, 0, 0, overlayScale, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    const b = state.ball;
     if (state.phase !== 'title') {
+      drawBallIndicator();
       drawMinimap();
       drawHUD();
       drawControls();
@@ -1024,18 +876,35 @@
   }
 
   // ---------- メインループ ----------
+  let overlayScale = 1;
+  function resize() {
+    const r = canvas.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    overlayScale = (r.width / W) * dpr;
+    canvas.width = Math.round(W * overlayScale);
+    canvas.height = Math.round(H * overlayScale);
+    Scene3D.resize(r.width, r.height);
+  }
+  Scene3D.init(document.getElementById('view'));
+  window.addEventListener('resize', resize);
+  resize();
+
   let last = performance.now(), acc = 0;
   function frame(now) {
-    acc += Math.min(0.1, (now - last) / 1000);
+    const frameDt = Math.max(0, Math.min(0.1, (now - last) / 1000));
     last = now;
+    acc += frameDt;
+    if (api.hold) acc = 0; // テスト用: シミュレーションを止めて描画だけ行う
     while (acc >= DT) { update(DT); acc -= DT; }
+    Scene3D.render(state, frameDt, { jumpHeight, forward });
     draw();
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
 
   // テスト・デバッグ用フック
-  window.CenterFly = {
+  const api = window.CenterFly = {
+    hold: false,
     state, newGame, update, DT, TOTAL,
     setBot(fn) { bot = fn; },
     consts: { G, FENCE, WALL_H, REACH, CATCH_R, JUMP_T, JUMP_H, DIVE_T, DIVE_V, WALK, DASH, HOME_POS },

@@ -8,8 +8,13 @@
 </head>
 <body>
 <div id="wrap">
-  <canvas id="game" width="960" height="640"></canvas>
+  <div id="stage">
+    <canvas id="view"></canvas>
+    <canvas id="game" width="960" height="640"></canvas>
+  </div>
 </div>
+<script src="vendor/three.min.js"></script>
+<script src="scene3d.js"></script>
 <script src="game.js"></script>
 </body>
 </html>

@@ -1,7 +1,7 @@
 html, body {
   margin: 0;
   height: 100%;
-  background: #10161c;
+  background: #0a0d1c;
   overflow: hidden;
   touch-action: none;
   -webkit-user-select: none;
@@ -16,12 +16,21 @@ html, body {
   justify-content: center;
 }
 
-#game {
-  display: block;
-  max-width: 100vw;
-  max-height: 100vh;
-  aspect-ratio: 3 / 2;
+#stage {
+  position: relative;
   width: min(100vw, 150vh);
-  background: #1c2a1c;
+  aspect-ratio: 3 / 2;
+}
+
+#stage canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
   touch-action: none;
+}
+
+#view {
+  background: #0a0d1c;
 }
