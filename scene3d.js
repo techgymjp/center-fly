@@ -460,49 +460,75 @@ window.Scene3D = (() => {
   }
 
   // ---------- 花火(ホーム後方のスタンド上空) ----------
+  // 途中で新しいジオメトリやシェーダーを作るとカクつくので、最初にまとめて用意して使い回す
   const ROCKET_T = 0.9;
   const FW_COLORS = [0xff5252, 0xffd740, 0x69f0ae, 0x40c4ff, 0xe040fb, 0xffffff, 0xff9100];
+  const FW_MAX = 8, FW_N = 260;
   let clock = 0, glowTex = null;
-  const pendingFw = [], rockets = [], bursts = [];
+  const pendingFw = [], rocketPool = [], burstPool = [];
+
+  function buildFireworks() {
+    for (let i = 0; i < FW_MAX + 2; i++) {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xfff3c0, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
+      sp.scale.set(3, 3, 1);
+      sp.visible = false;
+      scene.add(sp);
+      rocketPool.push({ sp, active: false, x: 0, y: 0, z0: 0, z1: 0, t: 0, big: false });
+    }
+    for (let i = 0; i < FW_MAX; i++) {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(FW_N * 3), 3));
+      geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(FW_N * 3), 3));
+      const pts = new THREE.Points(geo, new THREE.PointsMaterial({ size: 4, map: glowTex, vertexColors: true, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
+      pts.frustumCulled = false;
+      pts.visible = false;
+      scene.add(pts);
+      const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
+      flash.scale.set(55, 55, 1);
+      flash.visible = false;
+      scene.add(flash);
+      burstPool.push({ pts, flash, vel: new Float32Array(FW_N * 3), n: 0, t: 0, life: 2.4, active: false });
+    }
+  }
 
   function firework(delay, big) { pendingFw.push({ at: clock + delay, big }); }
 
   function spawnRocket(big) {
-    const x = (Math.random() - 0.5) * 120, y = -40 - Math.random() * 35;
-    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xfff3c0, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
-    sp.scale.set(3, 3, 1);
-    scene.add(sp);
-    rockets.push({ sp, x, y, z0: 35, z1: (big ? 75 : 62) + Math.random() * 22, t: 0, big });
+    const r = rocketPool.find((q) => !q.active);
+    if (!r) return;
+    Object.assign(r, { active: true, x: (Math.random() - 0.5) * 120, y: -40 - Math.random() * 35, z0: 35, z1: (big ? 75 : 62) + Math.random() * 22, t: 0, big });
+    r.sp.visible = true;
   }
 
+  const tmpColor1 = new THREE.Color(), tmpColor2 = new THREE.Color();
   function spawnBurst(x, y, z, big) {
-    const n = big ? 320 : 220;
-    const pos = new Float32Array(n * 3), vel = [], col = new Float32Array(n * 3);
-    const c1 = new THREE.Color(FW_COLORS[(Math.random() * FW_COLORS.length) | 0]);
-    const c2 = new THREE.Color(FW_COLORS[(Math.random() * FW_COLORS.length) | 0]);
+    // 空きがなければ一番古いものを再利用
+    let bu = burstPool.find((q) => !q.active);
+    if (!bu) bu = burstPool.reduce((a, q) => (q.t > a.t ? q : a));
+    const n = big ? FW_N : 180;
+    const pos = bu.pts.geometry.attributes.position.array, col = bu.pts.geometry.attributes.color.array, vel = bu.vel;
+    tmpColor1.setHex(FW_COLORS[(Math.random() * FW_COLORS.length) | 0]);
+    tmpColor2.setHex(FW_COLORS[(Math.random() * FW_COLORS.length) | 0]);
     const speed = big ? 36 : 28;
     for (let i = 0; i < n; i++) {
       const u = Math.random() * 2 - 1, a = Math.random() * Math.PI * 2, r = Math.sqrt(1 - u * u);
       const sv = speed * (0.85 + Math.random() * 0.3);
-      vel.push(new THREE.Vector3(r * Math.cos(a) * sv, u * sv, r * Math.sin(a) * sv));
-      const p = V(x, y, z);
-      pos.set([p.x, p.y, p.z], i * 3);
-      const c = i % 3 === 0 ? c2 : c1;
-      col.set([c.r, c.g, c.b], i * 3);
+      vel[i * 3] = r * Math.cos(a) * sv; vel[i * 3 + 1] = u * sv; vel[i * 3 + 2] = r * Math.sin(a) * sv;
+      pos[i * 3] = x; pos[i * 3 + 1] = z; pos[i * 3 + 2] = -y;
+      const c = i % 3 === 0 ? tmpColor2 : tmpColor1;
+      col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
     }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-    const mat = new THREE.PointsMaterial({ size: big ? 4.5 : 3.6, map: glowTex, vertexColors: true, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false });
-    const pts = new THREE.Points(geo, mat);
-    pts.frustumCulled = false;
-    scene.add(pts);
-    // 破裂の瞬間の閃光
-    const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: c1, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
-    flash.position.copy(V(x, y, z));
-    flash.scale.set(90, 90, 1);
-    scene.add(flash);
-    bursts.push({ pts, vel, flash, t: 0, life: 2.4 });
+    bu.pts.geometry.setDrawRange(0, n);
+    bu.pts.geometry.attributes.position.needsUpdate = true;
+    bu.pts.geometry.attributes.color.needsUpdate = true;
+    bu.pts.material.size = big ? 4.5 : 3.6;
+    bu.pts.material.opacity = 1;
+    bu.pts.visible = true;
+    bu.flash.material.color.copy(tmpColor1);
+    bu.flash.material.opacity = 1;
+    bu.flash.position.set(x, z, -y);
+    bu.flash.visible = true;
+    Object.assign(bu, { n, t: 0, active: true });
   }
 
   function updateFireworks(dt) {
@@ -510,38 +536,31 @@ window.Scene3D = (() => {
     for (let i = pendingFw.length - 1; i >= 0; i--) {
       if (pendingFw[i].at <= clock) { spawnRocket(pendingFw[i].big); pendingFw.splice(i, 1); }
     }
-    for (let i = rockets.length - 1; i >= 0; i--) {
-      const r = rockets[i];
+    for (const r of rocketPool) {
+      if (!r.active) continue;
       r.t += dt;
       const u = Math.min(1, r.t / ROCKET_T);
       const z = r.z0 + (r.z1 - r.z0) * (1 - (1 - u) * (1 - u));
-      r.sp.position.copy(V(r.x + Math.sin(r.t * 20) * 0.3, r.y, z));
+      r.sp.position.set(r.x + Math.sin(r.t * 20) * 0.3, z, -r.y);
       if (u >= 1) {
-        scene.remove(r.sp); r.sp.material.dispose();
+        r.active = false; r.sp.visible = false;
         spawnBurst(r.x, r.y, z, r.big);
-        rockets.splice(i, 1);
       }
     }
-    for (let i = bursts.length - 1; i >= 0; i--) {
-      const bu = bursts[i];
+    const drag = Math.exp(-1.6 * dt), g = 5 * dt;
+    for (const bu of burstPool) {
+      if (!bu.active) continue;
       bu.t += dt;
-      const arr = bu.pts.geometry.attributes.position.array;
-      const drag = Math.exp(-1.6 * dt);
-      for (let k = 0; k < bu.vel.length; k++) {
-        const v = bu.vel[k];
-        v.multiplyScalar(drag);
-        v.y -= 5 * dt;
-        arr[k * 3] += v.x * dt; arr[k * 3 + 1] += v.y * dt; arr[k * 3 + 2] += v.z * dt;
+      const arr = bu.pts.geometry.attributes.position.array, vel = bu.vel;
+      for (let k = 0; k < bu.n * 3; k += 3) {
+        vel[k] *= drag; vel[k + 1] = vel[k + 1] * drag - g; vel[k + 2] *= drag;
+        arr[k] += vel[k] * dt; arr[k + 1] += vel[k + 1] * dt; arr[k + 2] += vel[k + 2] * dt;
       }
       bu.pts.geometry.attributes.position.needsUpdate = true;
       const fade = 1 - bu.t / bu.life;
       bu.pts.material.opacity = Math.max(0, fade < 0.4 ? fade / 0.4 * (0.6 + 0.4 * Math.random()) : 1);
       bu.flash.material.opacity = Math.max(0, 1 - bu.t * 4);
-      if (bu.t >= bu.life) {
-        scene.remove(bu.pts); scene.remove(bu.flash);
-        bu.pts.geometry.dispose(); bu.pts.material.dispose(); bu.flash.material.dispose();
-        bursts.splice(i, 1);
-      }
+      if (bu.t >= bu.life) { bu.active = false; bu.pts.visible = false; bu.flash.visible = false; }
     }
   }
 
@@ -564,9 +583,9 @@ window.Scene3D = (() => {
     const n = b.nav;
     const u = Math.max(0, Math.min(1, (n.t - b.t) / n.t));
     const r = 1.1 + 9 * u * u;
-    navRing.position.copy(V(n.x, n.y, 0.07));
+    navRing.position.set(n.x, 0.07, -n.y);
     navRing.scale.setScalar(r);
-    navDot.position.copy(V(n.x, n.y, 0.08));
+    navDot.position.set(n.x, 0.08, -n.y);
     const pulse = 0.65 + 0.3 * Math.sin(state.time * 10);
     navRing.material.opacity = pulse;
     navDot.material.opacity = 0.35 + 0.5 * (1 - u);
@@ -576,8 +595,13 @@ window.Scene3D = (() => {
 
   // ---------- 初期化 ----------
   function init(canvas) {
-    renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    // スマホは描画解像度を抑える(高精細画面ではアンチエイリアスも省く)
+    const dpr = window.devicePixelRatio || 1;
+    const touch = window.matchMedia('(pointer: coarse)').matches;
+    quality.max = Math.min(dpr, touch ? 1.5 : 2);
+    quality.pr = quality.max;
+    renderer = new THREE.WebGLRenderer({ canvas, antialias: dpr < 2, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(quality.pr);
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0a0d1c);
     scene.fog = new THREE.Fog(0x141a33, 180, 520);
@@ -619,11 +643,38 @@ window.Scene3D = (() => {
     buildPlayers();
     buildBall();
     buildNav();
+    buildFireworks();
+    prewarm();
     ready = true;
+  }
+
+  // 最初のプレイ中に初めて表示する物(ボール・ナビ・花火)のシェーダーを先に準備しておく
+  function prewarm() {
+    const hidden = [];
+    scene.traverse((o) => { if (!o.visible) { hidden.push(o); o.visible = true; } });
+    renderer.compile(scene, camera);
+    for (const o of hidden) o.visible = false;
+  }
+
+  // 重い端末では描画解像度を自動で下げる
+  const quality = { max: 1, pr: 1, frames: 0, time: 0, warm: 0, w: 0, h: 0 };
+  function adaptQuality(dt) {
+    quality.warm += dt;
+    if (quality.warm < 3 || quality.pr <= 1) return;
+    quality.frames++; quality.time += dt;
+    if (quality.time < 2) return;
+    const avg = quality.time / quality.frames;
+    quality.frames = 0; quality.time = 0;
+    if (avg > 1 / 48) {
+      quality.pr = Math.max(1, quality.pr - 0.25);
+      renderer.setPixelRatio(quality.pr);
+      renderer.setSize(quality.w, quality.h, false);
+    }
   }
 
   function resize(cssW, cssH, logicalW) {
     if (!ready) return;
+    quality.w = cssW; quality.h = cssH;
     W = logicalW;
     camera.aspect = cssW / cssH;
     camera.updateProjectionMatrix();
@@ -633,7 +684,7 @@ window.Scene3D = (() => {
   // ---------- 毎フレーム ----------
   function poseFielder(f, jumpH, time, b) {
     const r = fielderRig;
-    r.root.position.copy(V(f.x, f.y, jumpH));
+    r.root.position.set(f.x, jumpH, -f.y);
     r.root.rotation.y = Math.PI - f.face;
     const speed = Math.hypot(f.vx, f.vy);
     r.body.rotation.x = 0;
@@ -675,7 +726,7 @@ window.Scene3D = (() => {
         r.armL.rotation.z = Math.max(-1.0, Math.min(1.0, -Math.atan2(right, 1.2))) * w;
       }
     }
-    fielderShadow.position.copy(V(f.x, f.y, 0.03));
+    fielderShadow.position.set(f.x, 0.03, -f.y);
     const s = 1 - Math.min(0.5, jumpH * 0.3);
     fielderShadow.scale.setScalar(f.mode === 'down' || f.mode === 'dive' ? 1.5 : s);
   }
@@ -689,6 +740,7 @@ window.Scene3D = (() => {
     poseFielder(f, info.jumpHeight(f), state.time, b);
     updateFireworks(dt);
     updateNav(state);
+    adaptQuality(dt);
 
     // ピッチャーとバッター
     const pt = state.phase === 'ready' ? state.phaseT : 9;
@@ -706,9 +758,9 @@ window.Scene3D = (() => {
         fielderRig.glove.getWorldPosition(ballMesh.position);
         ballMesh.position.y += 0.12; // グラブからのぞかせる
       } else {
-        ballMesh.position.copy(V(b.x, b.y, b.z + BALL_R * 0.5));
+        ballMesh.position.set(b.x, b.z + BALL_R * 0.5, -b.y);
       }
-      ballShadow.position.copy(V(b.x, b.y, 0.04));
+      ballShadow.position.set(b.x, 0.04, -b.y);
       const s = Math.max(0.6, 1 - b.z * 0.012);
       ballShadow.scale.setScalar(s);
       ballShadow.material.opacity = Math.max(0.3, 0.6 - b.z * 0.01);
@@ -754,18 +806,18 @@ window.Scene3D = (() => {
       pitch = Math.min(maxPitch, Math.max(pitch, elev - halfV * 0.6));
     }
     cam.pitch += (pitch - cam.pitch) * (1 - Math.exp(-3 * dt));
-    camera.position.copy(V(cx, cy, camH));
+    camera.position.set(cx, camH, -cy);
     const look = 40;
-    camera.lookAt(V(cx + cam.fx * look, cy + cam.fy * look, camH + Math.tan(cam.pitch) * look));
+    camera.lookAt(cx + cam.fx * look, camH + Math.tan(cam.pitch) * look, -(cy + cam.fy * look));
 
     renderer.render(scene, camera);
   }
 
   const tmp = new THREE.Vector3();
   function project(x, y, z) {
-    tmp.copy(V(x, y, z)).project(camera);
+    tmp.set(x, z, -y).project(camera);
     return { x: (tmp.x + 1) / 2 * W, y: (1 - tmp.y) / 2 * H, behind: tmp.z > 1 };
   }
 
-  return { init, render, resize, project, firework, ROCKET_T };
+  return { init, render, resize, project, firework, ROCKET_T, get info() { return renderer.info; }, get pixelRatio() { return quality.pr; } };
 })();

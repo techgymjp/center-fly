@@ -1007,7 +1007,8 @@
   function resize() {
     const r = canvas.getBoundingClientRect();
     if (!r.width || !r.height) return;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    // 2D の表示は描画解像度を抑えめに(スマホは 1.5 倍まで)
+    const dpr = Math.min(window.devicePixelRatio || 1, isTouch ? 1.5 : 2);
     W = Math.round(H * r.width / r.height);
     // 右側のボタン類は右端に合わせる
     BTN.dash.x = W - 100; BTN.jump.x = W - 220; BTN.dive.x = W - 170;
