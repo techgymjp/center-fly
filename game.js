@@ -1,0 +1,1043 @@
+'use strict';
+// センターフライ — 100球のセンターフライを全部捕れるか?
+// 座標系: ホームベースが原点、+y がセンター方向(画面の上)、+x がライト方向。単位はメートル。
+(() => {
+  // ---------- 定数 ----------
+  const W = 960, H = 640;
+  const S = 7;            // 1m あたりのピクセル数
+  const Y0 = 40;          // 画面下端のワールド y
+  const ZS = 3;           // 高さ 1m あたりの画面上オフセット(擬似3D)
+  const G = 9.8;
+  const FENCE = 122;      // フェンスまでの距離
+  const WALL_H = 3.0;     // フェンスの高さ
+  const TRACK = 116;      // ウォーニングトラック開始
+  const HOME_POS = { x: 0, y: 92 };
+  const TOTAL = 100;
+
+  const WALK = 6.0, DASH = 8.6, ACC = 24;
+  const STAMINA_MAX = 5.0, STAMINA_REGEN = 0.35;
+  const REACH = 2.3, CATCH_R = 1.1;
+  const JUMP_T = 0.6, JUMP_H = 1.5;
+  const DIVE_T = 0.4, DIVE_V = 10.5, DOWN_T = 0.9;
+  const DT = 1 / 120;
+
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+
+  // ---------- 乱数 ----------
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6D2B79F5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  let rng = mulberry32(Date.now());
+  const rand = (a, b) => a + (b - a) * rng();
+
+  // ---------- 保存 ----------
+  function loadBest() {
+    try { return JSON.parse(localStorage.getItem('centerfly.best')) || null; } catch (e) { return null; }
+  }
+  function saveBest(b) {
+    try { localStorage.setItem('centerfly.best', JSON.stringify(b)); } catch (e) { /* 保存できない環境 */ }
+  }
+
+  // ---------- サウンド ----------
+  let actx = null;
+  function audio() {
+    if (!actx) {
+      try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { actx = null; }
+    }
+    if (actx && actx.state === 'suspended') actx.resume();
+    return actx;
+  }
+  function tone(freq, dur, type = 'sine', vol = 0.2, slide = 0) {
+    const a = actx;
+    if (!a) return;
+    const o = a.createOscillator(), g = a.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, a.currentTime);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), a.currentTime + dur);
+    g.gain.setValueAtTime(vol, a.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, a.currentTime + dur);
+    o.connect(g).connect(a.destination);
+    o.start();
+    o.stop(a.currentTime + dur);
+  }
+  function crack() {
+    const a = actx;
+    if (!a) return;
+    const len = Math.floor(a.sampleRate * 0.12);
+    const buf = a.createBuffer(1, len, a.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+    const src = a.createBufferSource(), g = a.createGain();
+    src.buffer = buf;
+    g.gain.value = 0.5;
+    src.connect(g).connect(a.destination);
+    src.start();
+    tone(1400, 0.08, 'square', 0.08, -800);
+  }
+  const sfx = {
+    crack,
+    catch: () => { tone(520, 0.08, 'triangle', 0.25); setTimeout(() => tone(780, 0.12, 'triangle', 0.2), 70); },
+    great: () => { [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => tone(f, 0.15, 'triangle', 0.2), i * 80)); },
+    miss: () => tone(220, 0.4, 'sawtooth', 0.12, -120),
+    jump: () => tone(300, 0.15, 'sine', 0.1, 300),
+    dive: () => tone(180, 0.2, 'sine', 0.12, -60),
+  };
+
+  // ---------- 入力 ----------
+  const keys = new Set();
+  const input = { mx: 0, my: 0, dash: false, jump: false, dive: false };
+  const pressed = { jump: false, dive: false, start: false };
+  let bot = null; // テスト用: (state) => input を返す関数
+
+  const RING = { x: 125, y: 510, r: 95, dead: 14 };
+  const BTN = {
+    dash: { x: 860, y: 548, r: 54, label: 'ダッシュ', key: 'Shift' },
+    jump: { x: 740, y: 590, r: 38, label: 'ジャンプ', key: 'Z' },
+    dive: { x: 790, y: 470, r: 38, label: 'ダイブ', key: 'X' },
+  };
+  const pointers = new Map(); // pointerId -> 'ring' | 'dash' | 'jump' | 'dive' | 'none'
+  const ringInput = { active: false, mx: 0, my: 0 };
+
+  window.addEventListener('keydown', (e) => {
+    audio();
+    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if (!keys.has(k)) {
+      if (k === 'z' || k === 'j') pressed.jump = true;
+      if (k === 'x' || k === 'k') pressed.dive = true;
+      if (k === ' ' || k === 'Enter') pressed.start = true;
+      if (k === 'p' || k === 'Escape') togglePause();
+    }
+    keys.add(k);
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) e.preventDefault();
+  });
+  window.addEventListener('keyup', (e) => {
+    keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key);
+  });
+  window.addEventListener('blur', () => keys.clear());
+
+  function canvasPos(e) {
+    const r = canvas.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height };
+  }
+  function hitButton(p) {
+    for (const [name, b] of Object.entries(BTN)) {
+      if (Math.hypot(p.x - b.x, p.y - b.y) <= b.r + 10) return name;
+    }
+    return null;
+  }
+  function setRing(p) {
+    const dx = p.x - RING.x, dy = p.y - RING.y;
+    const d = Math.hypot(dx, dy);
+    if (d < RING.dead) { ringInput.mx = 0; ringInput.my = 0; return; }
+    // 円の方角合わせ: 16方位にスナップ
+    const step = Math.PI / 8;
+    const ang = Math.round(Math.atan2(dx, -dy) / step) * step;
+    const mag = Math.min(1, (d - RING.dead) / (RING.r * 0.6));
+    ringInput.mx = Math.sin(ang) * mag;
+    ringInput.my = Math.cos(ang) * mag;
+  }
+  canvas.addEventListener('pointerdown', (e) => {
+    audio();
+    e.preventDefault();
+    canvas.setPointerCapture(e.pointerId);
+    const p = canvasPos(e);
+    if (state.phase === 'title' || state.phase === 'over') {
+      if (state.phase !== 'over' || state.overT > 1.0) pressed.start = true;
+      pointers.set(e.pointerId, 'none');
+      return;
+    }
+    if (state.paused) { togglePause(); pointers.set(e.pointerId, 'none'); return; }
+    if (Math.hypot(p.x - RING.x, p.y - RING.y) <= RING.r + 30) {
+      pointers.set(e.pointerId, 'ring');
+      ringInput.active = true;
+      setRing(p);
+      return;
+    }
+    const b = hitButton(p);
+    if (b === 'jump') pressed.jump = true;
+    if (b === 'dive') pressed.dive = true;
+    pointers.set(e.pointerId, b || 'none');
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (pointers.get(e.pointerId) === 'ring') setRing(canvasPos(e));
+  });
+  function releasePointer(e) {
+    if (pointers.get(e.pointerId) === 'ring') {
+      ringInput.active = false; ringInput.mx = 0; ringInput.my = 0;
+    }
+    pointers.delete(e.pointerId);
+  }
+  canvas.addEventListener('pointerup', releasePointer);
+  canvas.addEventListener('pointercancel', releasePointer);
+
+  function readInput() {
+    if (bot) {
+      const b = bot(state);
+      input.mx = b.mx || 0; input.my = b.my || 0; input.dash = !!b.dash;
+      input.jump = !!b.jump; input.dive = !!b.dive;
+      return;
+    }
+    let mx = 0, my = 0;
+    // テンキー 1-9 の8方向 + 矢印/WASD
+    if (keys.has('ArrowUp') || keys.has('w') || keys.has('8') || keys.has('7') || keys.has('9')) my += 1;
+    if (keys.has('ArrowDown') || keys.has('s') || keys.has('2') || keys.has('1') || keys.has('3')) my -= 1;
+    if (keys.has('ArrowRight') || keys.has('d') || keys.has('6') || keys.has('9') || keys.has('3')) mx += 1;
+    if (keys.has('ArrowLeft') || keys.has('a') || keys.has('4') || keys.has('7') || keys.has('1')) mx -= 1;
+    if (mx || my) {
+      const m = Math.hypot(mx, my);
+      mx /= m; my /= m;
+    } else if (ringInput.active) {
+      mx = ringInput.mx; my = ringInput.my;
+    }
+    let dash = keys.has('Shift') || keys.has(' ') || keys.has('c');
+    for (const v of pointers.values()) if (v === 'dash') dash = true;
+    input.mx = mx; input.my = my; input.dash = dash;
+    input.jump = pressed.jump; input.dive = pressed.dive;
+  }
+
+  // ---------- ゲーム状態 ----------
+  const state = {
+    phase: 'title', // title | ready | flight | result | over
+    paused: false,
+    index: 0,
+    catches: 0, misses: 0, score: 0, streak: 0, bestStreak: 0,
+    tech: { dive: 0, jump: 0, hr: 0, running: 0 },
+    phaseT: 0, overT: 0,
+    ball: null, fielder: null,
+    popups: [],
+    lastResult: null,
+    best: loadBest(),
+    time: 0,
+    newRecord: false,
+  };
+
+  function newFielder() {
+    return {
+      x: HOME_POS.x, y: HOME_POS.y, vx: 0, vy: 0,
+      face: Math.PI, // ホーム側を向いて構える
+      mode: 'run', t: 0, stamina: STAMINA_MAX,
+      dir: { x: 0, y: -1 },
+      dashing: false,
+    };
+  }
+
+  function newGame(seed) {
+    rng = mulberry32(seed != null ? seed : (Date.now() ^ (Math.random() * 1e9)));
+    Object.assign(state, {
+      phase: 'ready', paused: false, index: 0, catches: 0, misses: 0, score: 0,
+      streak: 0, bestStreak: 0, tech: { dive: 0, jump: 0, hr: 0, running: 0 },
+      phaseT: 0, overT: 0, ball: null, popups: [], lastResult: null, newRecord: false,
+    });
+    startBall();
+  }
+
+  function pickType(i) {
+    if (i < 3) return 'easy';
+    const lv = i / (TOTAL - 1);
+    const w = {
+      easy: 1 - 0.75 * lv,
+      run: 0.7,
+      deep: 0.2 + 0.6 * lv,
+      dive: i >= 6 ? 0.15 + 0.6 * lv : 0,
+      wall: i >= 12 ? 0.1 + 0.45 * lv : 0,
+    };
+    let sum = 0;
+    for (const v of Object.values(w)) sum += v;
+    let r = rng() * sum;
+    for (const [k, v] of Object.entries(w)) { r -= v; if (r <= 0) return k; }
+    return 'run';
+  }
+
+  function genBall(i) {
+    const lv = i / (TOTAL - 1);
+    const type = pickType(i);
+    const wind = (i >= 20 && rng() < 0.15 + 0.4 * lv) ? (rng() < 0.5 ? -1 : 1) * rand(0.6, 1.6 + lv) : 0;
+    const z0 = 1.0;
+    const s = HOME_POS;
+    const around = (d, a) => ({ x: s.x + Math.sin(a) * d, y: s.y + Math.cos(a) * d });
+    let T, L, hang;
+
+    if (type === 'wall') {
+      const a = rand(-0.22, 0.22);
+      const tc = rand(5.0, 5.6);
+      const zf = rand(3.2, 3.4 + 0.15 * lv);
+      const C = { x: Math.sin(a) * FENCE, y: Math.cos(a) * FENCE };
+      const v = {
+        x: (C.x - 0.5 * wind * tc * tc) / tc,
+        y: C.y / tc,
+        z: (zf - z0 + 0.5 * G * tc * tc) / tc,
+      };
+      // 着地時刻(フェンスの向こう)
+      hang = (v.z + Math.sqrt(v.z * v.z + 2 * G * z0)) / G;
+      return makeBall(type, v, wind, z0, hang);
+    }
+
+    switch (type) {
+      case 'easy':
+        T = rand(4.2, 5.0);
+        L = around(rand(0, 4.5 * (T - 1.0)), rand(0, Math.PI * 2));
+        break;
+      case 'run':
+        T = rand(3.8, 4.8);
+        L = around(rand(5.5 * (T - 0.8), 7.4 * (T - 0.9)), rand(0, Math.PI * 2));
+        break;
+      case 'deep':
+        T = rand(4.4, 5.4);
+        L = around(rand(6.2 * (T - 1.0), 7.6 * (T - 1.0)), rand(-1.0, 1.0));
+        break;
+      case 'dive':
+        T = rand(2.9, 3.6);
+        // 前方〜横への低いライナー
+        L = around(DASH * (T - 0.68) + 1.1 + rand(-2.2, 0.2), Math.PI + rand(-1.4, 1.4));
+        break;
+    }
+    // フェンス手前・フェアゾーン内に収める
+    const dh = Math.hypot(L.x, L.y);
+    if (dh > 118.5) { L.x *= 118.5 / dh; L.y *= 118.5 / dh; }
+    L.x = Math.max(-55, Math.min(55, L.x));
+    const v = {
+      x: (L.x - 0.5 * wind * T * T) / T,
+      y: L.y / T,
+      z: (0.5 * G * T * T - z0) / T,
+    };
+    return makeBall(type, v, wind, z0, T);
+  }
+
+  function makeBall(type, v, wind, z0, hang) {
+    return {
+      type, v, a: { x: wind, y: 0, z: -G }, wind, hang,
+      p0: { x: 0, y: 0, z: z0 },
+      x: 0, y: 0, z: z0, t: 0,
+      vx: v.x, vy: v.y, vz: v.z,
+      landed: false, caught: false, overFence: false,
+      trail: [],
+    };
+  }
+
+  function startBall() {
+    state.phase = 'ready';
+    state.phaseT = 0;
+    state.fielder = newFielder();
+    state.ball = genBall(state.index);
+    state.ball.waiting = true;
+    pressed.jump = pressed.dive = false;
+  }
+
+  function launch() {
+    state.phase = 'flight';
+    state.phaseT = 0;
+    state.ball.waiting = false;
+    sfx.crack();
+  }
+
+  // ---------- 野手 ----------
+  function setMode(f, m) { f.mode = m; f.t = 0; }
+
+  function updateFielder(f, inp, dt, canMove) {
+    f.t += dt;
+    let mx = canMove ? inp.mx : 0, my = canMove ? inp.my : 0;
+    let mag = Math.hypot(mx, my);
+    if (mag > 1) { mx /= mag; my /= mag; mag = 1; }
+
+    if (f.mode === 'land' && f.t > 0.12) setMode(f, 'run');
+
+    if (f.mode === 'run' || f.mode === 'land') {
+      const dashing = inp.dash && mag > 0.1 && f.stamina > 0 && canMove;
+      f.dashing = dashing;
+      const top = dashing ? DASH : WALK;
+      const tvx = mx * top, tvy = my * top;
+      const dvx = tvx - f.vx, dvy = tvy - f.vy;
+      const dv = Math.hypot(dvx, dvy);
+      const maxd = ACC * dt;
+      if (dv <= maxd) { f.vx = tvx; f.vy = tvy; } else { f.vx += dvx / dv * maxd; f.vy += dvy / dv * maxd; }
+      if (dashing) f.stamina = Math.max(0, f.stamina - dt);
+      else f.stamina = Math.min(STAMINA_MAX, f.stamina + STAMINA_REGEN * dt);
+      if (mag > 0.1) { f.face = Math.atan2(mx, my); }
+
+      if (f.mode === 'run' && canMove) {
+        if (inp.jump) {
+          setMode(f, 'jump');
+          f.vx *= 0.6; f.vy *= 0.6;
+          sfx.jump();
+        } else if (inp.dive) {
+          const d = mag > 0.2 ? { x: mx / mag, y: my / mag } : { x: Math.sin(f.face), y: Math.cos(f.face) };
+          f.dir = d;
+          f.face = Math.atan2(d.x, d.y);
+          setMode(f, 'dive');
+          sfx.dive();
+        }
+      }
+    } else if (f.mode === 'jump') {
+      if (f.t >= JUMP_T) { setMode(f, 'land'); f.vx *= 0.3; f.vy *= 0.3; }
+    } else if (f.mode === 'dive') {
+      f.vx = f.dir.x * DIVE_V; f.vy = f.dir.y * DIVE_V;
+      if (f.t >= DIVE_T) setMode(f, 'down');
+    } else if (f.mode === 'down') {
+      const k = Math.exp(-6 * dt);
+      f.vx *= k; f.vy *= k;
+      if (f.t >= DOWN_T) setMode(f, 'run');
+    }
+
+    f.x += f.vx * dt;
+    f.y += f.vy * dt;
+    // フェンスと外野の範囲
+    const d = Math.hypot(f.x, f.y);
+    const maxD = FENCE - 0.5;
+    if (d > maxD) {
+      f.x *= maxD / d; f.y *= maxD / d;
+      const nx = f.x / maxD, ny = f.y / maxD;
+      const vr = f.vx * nx + f.vy * ny;
+      if (vr > 0) { f.vx -= vr * nx; f.vy -= vr * ny; }
+    }
+    if (f.x < -60) { f.x = -60; f.vx = Math.max(0, f.vx); }
+    if (f.x > 60) { f.x = 60; f.vx = Math.min(0, f.vx); }
+    if (f.y < 45) { f.y = 45; f.vy = Math.max(0, f.vy); }
+  }
+
+  function jumpHeight(f) {
+    if (f.mode !== 'jump') return 0;
+    const u = Math.min(1, f.t / JUMP_T);
+    return 4 * JUMP_H * u * (1 - u);
+  }
+
+  function catchZone(f) {
+    switch (f.mode) {
+      case 'jump': {
+        const h = jumpHeight(f);
+        return { x: f.x, y: f.y, r: 1.0, top: REACH + h, bot: h * 0.5 };
+      }
+      case 'dive':
+        return { x: f.x + f.dir.x * 1.0, y: f.y + f.dir.y * 1.0, r: 1.5, top: 1.4, bot: 0 };
+      case 'down':
+        if (f.t < 0.25) return { x: f.x + f.dir.x * 1.0, y: f.y + f.dir.y * 1.0, r: 1.5, top: 1.4, bot: 0 };
+        return null;
+      default:
+        return { x: f.x, y: f.y, r: CATCH_R, top: REACH, bot: 0 };
+    }
+  }
+
+  // ---------- ボール ----------
+  function updateBall(b, dt) {
+    if (b.waiting) return;
+    if (b.caught) {
+      const f = state.fielder;
+      b.x = f.x + Math.sin(f.face + 0.6) * 0.5;
+      b.y = f.y + Math.cos(f.face + 0.6) * 0.5;
+      b.z = 1.2 + jumpHeight(f);
+      return;
+    }
+    if (!b.landed) {
+      b.t += dt;
+      const t = b.t;
+      b.x = b.p0.x + b.v.x * t + 0.5 * b.a.x * t * t;
+      b.y = b.p0.y + b.v.y * t;
+      b.z = b.p0.z + b.v.z * t + 0.5 * b.a.z * t * t;
+      b.vx = b.v.x + b.a.x * t;
+      b.vy = b.v.y;
+      b.vz = b.v.z + b.a.z * t;
+      if (Math.hypot(b.x, b.y) > FENCE + 0.6) b.overFence = true;
+      if (b.z <= 0) {
+        b.z = 0;
+        b.landed = true;
+        b.vz = -b.vz * 0.3;
+        b.vx *= 0.55; b.vy *= 0.55;
+        onLand(b);
+      }
+    } else {
+      // バウンド・転がり
+      b.vz -= G * dt;
+      b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt;
+      if (b.z <= 0) {
+        b.z = 0;
+        if (Math.abs(b.vz) > 1) { b.vz = -b.vz * 0.35; b.vx *= 0.7; b.vy *= 0.7; } else b.vz = 0;
+        const k = Math.exp(-1.2 * dt);
+        b.vx *= k; b.vy *= k;
+      }
+      const d = Math.hypot(b.x, b.y);
+      if (!b.overFence && d > FENCE - 0.2) {
+        // フェンスで跳ね返る
+        const nx = b.x / d, ny = b.y / d;
+        const vr = b.vx * nx + b.vy * ny;
+        if (vr > 0) { b.vx -= 1.4 * vr * nx; b.vy -= 1.4 * vr * ny; }
+        b.x = nx * (FENCE - 0.2); b.y = ny * (FENCE - 0.2);
+      }
+    }
+  }
+
+  function tryCatch() {
+    const b = state.ball, f = state.fielder;
+    if (b.waiting || b.caught || b.landed || b.overFence) return;
+    const z = catchZone(f);
+    if (!z) return;
+    if (b.z > z.top || b.z < z.bot) return;
+    if (Math.hypot(b.x - z.x, b.y - z.y) > z.r) return;
+    onCatch(b, f);
+  }
+
+  function onCatch(b, f) {
+    b.caught = true;
+    const speed = Math.hypot(f.vx, f.vy);
+    const ballDist = Math.hypot(b.x, b.y);
+    let label, pts, kind;
+    if (f.mode === 'jump' && b.z > WALL_H && ballDist > FENCE - 1.5) {
+      label = 'ホームランキャッチ!!'; pts = 500; kind = 'hr'; state.tech.hr++;
+    } else if (f.mode === 'jump') {
+      label = 'ジャンピングキャッチ!'; pts = 250; kind = 'jump'; state.tech.jump++;
+    } else if (f.mode === 'dive' || f.mode === 'down') {
+      label = 'ダイビングキャッチ!!'; pts = 300; kind = 'dive'; state.tech.dive++;
+    } else if (speed > 7.0) {
+      label = 'ランニングキャッチ!'; pts = 150; kind = 'running'; state.tech.running++;
+    } else {
+      label = 'キャッチ'; pts = 100; kind = 'normal';
+    }
+    state.streak++;
+    state.bestStreak = Math.max(state.bestStreak, state.streak);
+    const bonus = Math.min(state.streak - 1, 20) * 5;
+    pts += bonus;
+    state.catches++;
+    state.score += pts;
+    state.lastResult = { ok: true, kind };
+    popup(label, kind === 'normal' ? '#ffffff' : '#ffe14d', kind === 'normal' ? 40 : 52);
+    popup('+' + pts, '#9fe8ff', 26, 0.25);
+    if (kind === 'normal' || kind === 'running') sfx.catch(); else sfx.great();
+    endFlight();
+  }
+
+  function onLand(b) {
+    const d = Math.hypot(b.x, b.y);
+    state.misses++;
+    state.streak = 0;
+    const hr = d > FENCE;
+    state.lastResult = { ok: false, kind: hr ? 'hr' : 'hit' };
+    popup(hr ? 'ホームラン…' : 'ヒット…', '#ff6b6b', 46);
+    sfx.miss();
+    endFlight();
+  }
+
+  function endFlight() {
+    state.phase = 'result';
+    state.phaseT = 0;
+  }
+
+  function popup(text, color, size, delay = 0) {
+    state.popups.push({ text, color, size, t: -delay, life: 1.5, idx: state.popups.length });
+  }
+
+  function togglePause() {
+    if (state.phase === 'title' || state.phase === 'over') return;
+    state.paused = !state.paused;
+  }
+
+  // ---------- 更新 ----------
+  function update(dt) {
+    state.time += dt;
+    if (state.phase === 'title') {
+      if (pressed.start) { pressed.start = false; newGame(); }
+      return;
+    }
+    if (state.phase === 'over') {
+      state.overT += dt;
+      if (pressed.start && state.overT > 1.0) { pressed.start = false; newGame(); }
+      pressed.start = false;
+      return;
+    }
+    pressed.start = false;
+    if (state.paused) return;
+
+    readInput();
+    pressed.jump = pressed.dive = false;
+
+    state.phaseT += dt;
+    const f = state.fielder, b = state.ball;
+    const canMove = state.phase === 'flight' || state.phase === 'result';
+    updateFielder(f, input, dt, canMove);
+    updateBall(b, dt);
+    if (state.phase === 'flight') tryCatch();
+
+    if (!b.waiting && !b.caught) {
+      b.trailT = (b.trailT || 0) + dt;
+      if (b.trailT > 0.06 && !b.landed) {
+        b.trailT = 0;
+        b.trail.push({ x: b.x, y: b.y, z: b.z });
+        if (b.trail.length > 14) b.trail.shift();
+      }
+    }
+
+    for (const p of state.popups) p.t += dt;
+    state.popups = state.popups.filter((p) => p.t < p.life);
+
+    if (state.phase === 'ready' && state.phaseT >= 1.3) launch();
+    if (state.phase === 'result' && state.phaseT >= 1.6) {
+      state.index++;
+      if (state.index >= TOTAL) gameOver();
+      else startBall();
+    }
+  }
+
+  function gameOver() {
+    state.phase = 'over';
+    state.overT = 0;
+    const best = state.best;
+    if (!best || state.catches > best.catches || (state.catches === best.catches && state.score > best.score)) {
+      state.best = { catches: state.catches, score: state.score };
+      state.newRecord = true;
+      saveBest(state.best);
+    }
+  }
+
+  // ---------- 描画 ----------
+  const wx = (x) => W / 2 + x * S;
+  const wy = (y) => H - (y - Y0) * S;
+  const XMAX = W / 2 / S;
+
+  function arcPoints(r, n = 60) {
+    // 画面内に収まる x 範囲で半径 r の円弧(左→右)
+    const pts = [];
+    const xm = Math.min(r, XMAX + 1);
+    for (let i = 0; i <= n; i++) {
+      const x = -xm + (2 * xm) * i / n;
+      pts.push([x, Math.sqrt(Math.max(0, r * r - x * x))]);
+    }
+    return pts;
+  }
+
+  function fillRing(r1, r2, color) {
+    const a = arcPoints(r2), b = arcPoints(r1).reverse();
+    ctx.beginPath();
+    a.forEach(([x, y], i) => (i ? ctx.lineTo(wx(x), wy(y)) : ctx.moveTo(wx(x), wy(y))));
+    b.forEach(([x, y]) => ctx.lineTo(wx(x), wy(y)));
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
+
+  function drawField() {
+    // ファウルゾーン
+    ctx.fillStyle = '#2f6b33';
+    ctx.fillRect(0, 0, W, H);
+
+    // フェアゾーンの芝(縞模様)
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(wx(0), wy(0));
+    ctx.lineTo(wx(-200), wy(200));
+    ctx.lineTo(wx(200), wy(200));
+    ctx.closePath();
+    ctx.clip();
+    ctx.fillStyle = '#3c8a3f';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#43954a';
+    for (let x = -72; x < 72; x += 12) ctx.fillRect(wx(x), 0, 6 * S, H);
+    ctx.restore();
+
+    // ウォーニングトラック
+    fillRing(TRACK, FENCE, '#b98a56');
+    // スタンド
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(W, 0);
+    arcPoints(FENCE + 0.8).reverse().forEach(([x, y]) => ctx.lineTo(wx(x), wy(y)));
+    ctx.closePath();
+    ctx.fillStyle = '#20262e';
+    ctx.fill();
+    // 観客のドット
+    ctx.fillStyle = '#323b46';
+    for (let sy = 4; sy < wy(FENCE + 6); sy += 9) {
+      for (let sx = (sy % 18 ? 4 : 9); sx < W; sx += 10) {
+        const x = (sx - W / 2) / S, y = (H - sy) / S + Y0;
+        if (Math.hypot(x, y) > FENCE + 3) ctx.fillRect(sx, sy, 4, 4);
+      }
+    }
+    // フェンス
+    fillRing(FENCE, FENCE + 0.8, '#1f4d2a');
+    ctx.strokeStyle = '#f2d23c';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    arcPoints(FENCE + 0.8).forEach(([x, y], i) => (i ? ctx.lineTo(wx(x), wy(y)) : ctx.moveTo(wx(x), wy(y))));
+    ctx.stroke();
+
+    // ファウルライン
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(wx(0), wy(0)); ctx.lineTo(wx(-FENCE * 0.7071), wy(FENCE * 0.7071));
+    ctx.moveTo(wx(0), wy(0)); ctx.lineTo(wx(FENCE * 0.7071), wy(FENCE * 0.7071));
+    ctx.stroke();
+
+    // 守備位置マーク
+    ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(wx(HOME_POS.x), wy(HOME_POS.y), 10, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('122m', wx(0), wy(FENCE + 2.2));
+  }
+
+  function drawShadow(x, y, rx, ry, alpha) {
+    ctx.fillStyle = `rgba(0,0,0,${alpha})`;
+    ctx.beginPath();
+    ctx.ellipse(wx(x), wy(y), rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  function drawFielder(f) {
+    const sx = wx(f.x), sy = wy(f.y);
+    const h = jumpHeight(f);
+    drawShadow(f.x, f.y, 13, 7, 0.35);
+    ctx.save();
+    ctx.translate(sx, sy - h * ZS * 3);
+    if (f.mode === 'dive' || f.mode === 'down') {
+      const ang = Math.atan2(f.dir.x, f.dir.y);
+      ctx.rotate(ang);
+      // 体を伸ばした姿勢(上方向が進行方向)
+      ctx.fillStyle = f.mode === 'down' ? '#d9dde3' : '#ffffff';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 7, 15, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#1d2f6f';
+      ctx.beginPath(); ctx.arc(0, -10, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#8a5a2b';
+      ctx.beginPath(); ctx.arc(4, -20, 5, 0, Math.PI * 2); ctx.fill();
+    } else {
+      // 体
+      const fx = Math.sin(f.face), fy = -Math.cos(f.face);
+      // 肩(向きに直交する楕円)
+      ctx.save();
+      ctx.rotate(f.face);
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.ellipse(0, 0, 13, 8, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#1d2f6f'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.restore();
+      // 帽子とつば(向いている方向)
+      ctx.fillStyle = '#1d2f6f';
+      ctx.beginPath(); ctx.arc(fx * 6, fy * 6, 4.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(0, 0, 6.5, 0, Math.PI * 2); ctx.fill();
+      // グラブ
+      const gx = Math.sin(f.face - 1.2), gy = -Math.cos(f.face - 1.2);
+      ctx.fillStyle = '#9a6430';
+      ctx.beginPath(); ctx.arc(gx * 14, gy * 14 - (f.mode === 'jump' ? 8 : 0), 5.5, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#5a3818'; ctx.lineWidth = 1; ctx.stroke();
+    }
+    ctx.restore();
+    if (f.dashing && f.mode === 'run') {
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 3; i++) {
+        const bx = sx - f.vx * 2.2 + (i - 1) * 5, by = sy + f.vy * 2.2;
+        ctx.beginPath(); ctx.moveTo(bx, by); ctx.lineTo(bx - f.vx * 1.5, by + f.vy * 1.5); ctx.stroke();
+      }
+    }
+  }
+
+  function drawBall(b) {
+    if (b.waiting) return;
+    // 軌跡
+    for (let i = 0; i < b.trail.length; i++) {
+      const p = b.trail[i];
+      ctx.fillStyle = `rgba(255,255,255,${0.05 + 0.25 * i / b.trail.length})`;
+      ctx.beginPath();
+      ctx.arc(wx(p.x), wy(p.y) - p.z * ZS, 2 + p.z * 0.06, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    const sx = wx(b.x), sy = wy(b.y) - b.z * ZS;
+    // 影とボールを結ぶ補助線(高さの目安)
+    if (b.z > 0.5) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 4]);
+      ctx.beginPath(); ctx.moveTo(sx, wy(b.y)); ctx.lineTo(sx, sy); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    const sr = Math.max(3.5, 6 - b.z * 0.08);
+    drawShadow(b.x, b.y, sr, sr * 0.6, 0.55);
+    const r = 3.5 + b.z * 0.11;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#c0392b'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(sx - r * 0.3, sy, r * 0.7, -0.9, 0.9); ctx.stroke();
+
+    // 画面外(下)にあるときの矢印
+    if (sy > H - 4 || wy(b.y) > H) {
+      const ax = Math.max(16, Math.min(W - 16, sx));
+      ctx.fillStyle = '#ffe14d';
+      ctx.beginPath();
+      ctx.moveTo(ax, H - 26); ctx.lineTo(ax - 10, H - 8); ctx.lineTo(ax + 10, H - 8);
+      ctx.closePath(); ctx.fill();
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(Math.round(b.z) + 'm', ax, H - 30);
+    }
+  }
+
+  function drawMinimap() {
+    const mx = W - 168, my = 12, mw = 156, mh = 136;
+    const ms = mh / 132;
+    const tx = (x) => mx + mw / 2 + x * ms;
+    const ty = (y) => my + mh - 4 - y * ms;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(mx, my, mw, mh);
+    ctx.save();
+    ctx.beginPath(); ctx.rect(mx, my, mw, mh); ctx.clip();
+    // フェアゾーン
+    ctx.beginPath();
+    ctx.moveTo(tx(0), ty(0));
+    for (let a = -Math.PI / 4; a <= Math.PI / 4 + 1e-6; a += Math.PI / 40) ctx.lineTo(tx(Math.sin(a) * FENCE), ty(Math.cos(a) * FENCE));
+    ctx.closePath();
+    ctx.fillStyle = '#3c8a3f'; ctx.fill();
+    ctx.strokeStyle = '#f2d23c'; ctx.lineWidth = 1; ctx.stroke();
+    // 内野
+    ctx.fillStyle = '#b98a56';
+    ctx.beginPath();
+    ctx.moveTo(tx(0), ty(0)); ctx.lineTo(tx(19.4), ty(19.4)); ctx.lineTo(tx(0), ty(38.8)); ctx.lineTo(tx(-19.4), ty(19.4));
+    ctx.closePath(); ctx.fill();
+    // 表示範囲
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.strokeRect(tx(-XMAX), ty(Y0 + H / S), XMAX * 2 * ms, H / S * ms);
+    const f = state.fielder;
+    if (f) {
+      ctx.fillStyle = '#9fe8ff';
+      ctx.beginPath(); ctx.arc(tx(f.x), ty(f.y), 3, 0, Math.PI * 2); ctx.fill();
+    }
+    const b = state.ball;
+    if (b && !b.waiting) {
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.beginPath(); ctx.arc(tx(b.x), ty(b.y), 2, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); ctx.arc(tx(b.x), ty(b.y) - b.z * ms * 0.6, 2.5, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawHUD() {
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(12, 12, 250, 100);
+    ctx.fillStyle = '#ffffff';
+    ctx.textAlign = 'left';
+    ctx.font = 'bold 22px sans-serif';
+    ctx.fillText(`第 ${Math.min(state.index + 1, TOTAL)} 球 / ${TOTAL}`, 24, 40);
+    ctx.font = 'bold 16px sans-serif';
+    ctx.fillStyle = '#9fe8ff';
+    ctx.fillText(`捕球 ${state.catches}`, 24, 64);
+    ctx.fillStyle = '#ff8b8b';
+    ctx.fillText(`落球 ${state.misses}`, 110, 64);
+    ctx.fillStyle = '#ffe14d';
+    ctx.fillText(`連続 ${state.streak}`, 190, 64);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(`SCORE ${state.score}`, 24, 86);
+
+    // スタミナ
+    const f = state.fielder;
+    const st = f ? f.stamina / STAMINA_MAX : 1;
+    ctx.fillStyle = '#333';
+    ctx.fillRect(24, 94, 226, 8);
+    ctx.fillStyle = st > 0.3 ? '#6be37a' : '#ff9a3c';
+    ctx.fillRect(24, 94, 226 * st, 8);
+    ctx.font = '10px sans-serif';
+    ctx.fillStyle = '#ddd';
+    ctx.fillText('ダッシュ', 200, 90);
+
+    // 風
+    const b = state.ball;
+    if (b && b.wind) {
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(272, 12, 128, 34);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 16px sans-serif';
+      const strong = Math.abs(b.wind) > 1.5 ? '強' : '弱';
+      ctx.fillText(`風 ${b.wind < 0 ? '←' : '→'} ${strong}`, 284, 35);
+      // 吹き流し
+      const fxp = 372, fyp = 29;
+      ctx.strokeStyle = '#ddd'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(fxp, fyp - 10); ctx.lineTo(fxp, fyp + 10); ctx.stroke();
+      ctx.fillStyle = '#ff7043';
+      const len = 10 + Math.abs(b.wind) * 6, wave = Math.sin(state.time * 8) * 2;
+      const dir = Math.sign(b.wind);
+      ctx.beginPath();
+      ctx.moveTo(fxp, fyp - 9); ctx.lineTo(fxp + dir * len, fyp - 5 + wave); ctx.lineTo(fxp, fyp - 1);
+      ctx.closePath(); ctx.fill();
+    }
+  }
+
+  function drawControls() {
+    // 方角リング
+    ctx.save();
+    ctx.globalAlpha = 0.8;
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath(); ctx.arc(RING.x, RING.y, RING.r, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 2; ctx.stroke();
+    const mx = input.mx, my = input.my;
+    const mag = Math.hypot(mx, my);
+    const cur = mag > 0.1 ? Math.atan2(mx, my) : null;
+    for (let i = 0; i < 16; i++) {
+      const a = i * Math.PI / 8;
+      const major = i % 2 === 0;
+      let diff = cur == null ? 9 : Math.abs(((a - cur + Math.PI * 3) % (Math.PI * 2)) - Math.PI);
+      const lit = diff < 0.2;
+      ctx.fillStyle = lit ? '#ffe14d' : (major ? 'rgba(255,255,255,0.75)' : 'rgba(255,255,255,0.35)');
+      const rr = RING.r - 12;
+      ctx.beginPath();
+      ctx.arc(RING.x + Math.sin(a) * rr, RING.y - Math.cos(a) * rr, lit ? 7 : (major ? 4.5 : 3), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.font = 'bold 12px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('バック', RING.x, RING.y - RING.r - 6);
+    ctx.fillText('前進', RING.x, RING.y + RING.r + 15);
+    // ノブ
+    const kx = RING.x + mx * RING.r * 0.6, ky = RING.y - my * RING.r * 0.6;
+    ctx.fillStyle = mag > 0.1 ? '#ffe14d' : 'rgba(255,255,255,0.6)';
+    ctx.beginPath(); ctx.arc(kx, ky, 16, 0, Math.PI * 2); ctx.fill();
+
+    // ボタン
+    for (const [name, b] of Object.entries(BTN)) {
+      let on = false;
+      for (const v of pointers.values()) if (v === name) on = true;
+      if (name === 'dash' && input.dash) on = true;
+      ctx.fillStyle = on ? 'rgba(255,225,77,0.85)' : 'rgba(0,0,0,0.4)';
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = on ? '#222' : '#fff';
+      ctx.font = `bold ${name === 'dash' ? 16 : 13}px sans-serif`;
+      ctx.fillText(b.label, b.x, b.y + 3);
+      ctx.font = '10px sans-serif';
+      ctx.fillText(b.key, b.x, b.y + 17);
+    }
+    ctx.restore();
+  }
+
+  function drawPopups() {
+    ctx.textAlign = 'center';
+    let line = 0;
+    for (const p of state.popups) {
+      if (p.t < 0) continue;
+      const a = Math.min(1, (p.life - p.t) / 0.4);
+      const sc = 1 + Math.max(0, 0.25 - p.t) * 1.5;
+      ctx.save();
+      ctx.globalAlpha = a;
+      ctx.translate(W / 2, 200 + line * 56 - p.t * 14);
+      ctx.scale(sc, sc);
+      ctx.font = `900 ${p.size}px sans-serif`;
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+      ctx.strokeText(p.text, 0, 0);
+      ctx.fillStyle = p.color;
+      ctx.fillText(p.text, 0, 0);
+      ctx.restore();
+      line++;
+    }
+  }
+
+  function centerText(text, y, size, color = '#fff', weight = 'bold') {
+    ctx.font = `${weight} ${size}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+    ctx.strokeText(text, W / 2, y);
+    ctx.fillStyle = color;
+    ctx.fillText(text, W / 2, y);
+  }
+
+  function drawTitle() {
+    ctx.fillStyle = 'rgba(8,14,20,0.72)';
+    ctx.fillRect(0, 0, W, H);
+    centerText('センターフライ', 150, 76, '#ffe14d', '900');
+    centerText('100球のフライ、全部捕れるか!?', 205, 26);
+    ctx.font = '17px sans-serif';
+    ctx.fillStyle = '#e6e6e6';
+    const lines = [
+      '移動 : 方角リングをタッチ / 矢印キー・WASD・テンキー(8方向)',
+      'ダッシュ : ダッシュボタン長押し / Shift・Space(スタミナ消費)',
+      'ジャンプ : Z  — フェンス際の打球はジャンプで「ホームランキャッチ」',
+      'ダイブ : X  — 前に落ちるライナーは飛び込んで捕れ!',
+      '捕球は自動。ボールの「影」が地面の位置、白い球が高さを表す。',
+      '右上のミニマップで打球の方向を早めに読もう。',
+    ];
+    lines.forEach((l, i) => ctx.fillText(l, W / 2, 262 + i * 30));
+    if (state.best) centerText(`ベスト: ${state.best.catches} / ${TOTAL} 球  (SCORE ${state.best.score})`, 470, 20, '#9fe8ff');
+    if (Math.floor(state.time * 2) % 2 === 0) centerText('SPACE / タップでプレイボール', 540, 30, '#ffffff');
+  }
+
+  function rankOf(c) {
+    if (c >= 100) return ['伝説の名手', '#ffe14d'];
+    if (c >= 95) return ['ゴールデングラブ', '#ffd54f'];
+    if (c >= 85) return ['不動のレギュラー', '#9fe8ff'];
+    if (c >= 70) return ['守備固め要員', '#b9f6ca'];
+    if (c >= 50) return ['二軍', '#e0e0e0'];
+    return ['草野球', '#bdbdbd'];
+  }
+
+  function drawOver() {
+    ctx.fillStyle = 'rgba(8,14,20,0.78)';
+    ctx.fillRect(0, 0, W, H);
+    centerText('ゲームセット', 120, 54, '#ffffff', '900');
+    centerText(`${state.catches} / ${TOTAL} 球 捕球`, 200, 48, state.catches === TOTAL ? '#ffe14d' : '#9fe8ff', '900');
+    if (state.catches === TOTAL) centerText('★ パーフェクト!! 全球捕球 ★', 250, 30, '#ffe14d');
+    const [rank, col] = rankOf(state.catches);
+    centerText(`称号: ${rank}`, 295, 30, col);
+    ctx.font = '18px sans-serif';
+    ctx.fillStyle = '#e6e6e6';
+    ctx.textAlign = 'center';
+    ctx.fillText(`SCORE ${state.score}   最大連続捕球 ${state.bestStreak}`, W / 2, 345);
+    ctx.fillText(`ダイビング ${state.tech.dive}  ジャンピング ${state.tech.jump}  ホームランキャッチ ${state.tech.hr}  ランニング ${state.tech.running}`, W / 2, 377);
+    if (state.newRecord) centerText('NEW RECORD!', 425, 28, '#ff8a65');
+    else if (state.best) centerText(`ベスト: ${state.best.catches} 球 (SCORE ${state.best.score})`, 425, 20, '#9fe8ff');
+    if (state.overT > 1.0 && Math.floor(state.time * 2) % 2 === 0) centerText('SPACE / タップでもう一度', 520, 28);
+  }
+
+  function draw() {
+    drawField();
+    const b = state.ball, f = state.fielder;
+    if (f) {
+      // 高い位置にあるボールは野手より手前に描く
+      if (b && !b.waiting && b.z < 1) { drawBall(b); drawFielder(f); } else { drawFielder(f); if (b) drawBall(b); }
+    }
+    if (state.phase !== 'title') {
+      drawMinimap();
+      drawHUD();
+      drawControls();
+      drawPopups();
+      if (state.phase === 'ready') {
+        centerText(`第 ${state.index + 1} 球`, 250, 44, '#ffffff', '900');
+        if (b && b.wind) centerText(`風が ${b.wind < 0 ? 'レフト' : 'ライト'}方向に吹いている`, 292, 20, '#ffcc80');
+      }
+      if (state.paused) {
+        ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, W, H);
+        centerText('PAUSE', H / 2, 56);
+        centerText('P / Esc / タップで再開', H / 2 + 44, 20);
+      }
+    }
+    if (state.phase === 'title') drawTitle();
+    if (state.phase === 'over') drawOver();
+  }
+
+  // ---------- メインループ ----------
+  let last = performance.now(), acc = 0;
+  function frame(now) {
+    acc += Math.min(0.1, (now - last) / 1000);
+    last = now;
+    while (acc >= DT) { update(DT); acc -= DT; }
+    draw();
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // テスト・デバッグ用フック
+  window.CenterFly = {
+    state, newGame, update, DT, TOTAL,
+    setBot(fn) { bot = fn; },
+    consts: { G, FENCE, WALL_H, REACH, CATCH_R, JUMP_T, JUMP_H, DIVE_T, DIVE_V, WALK, DASH, HOME_POS },
+  };
+})();
