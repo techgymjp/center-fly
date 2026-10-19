@@ -43,50 +43,8 @@
     try { localStorage.setItem('centerfly.best', JSON.stringify(b)); } catch (e) { /* 保存できない環境 */ }
   }
 
-  // ---------- サウンド ----------
-  let actx = null;
-  function audio() {
-    if (!actx) {
-      try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { actx = null; }
-    }
-    if (actx && actx.state === 'suspended') actx.resume();
-    return actx;
-  }
-  function tone(freq, dur, type = 'sine', vol = 0.2, slide = 0) {
-    const a = actx;
-    if (!a) return;
-    const o = a.createOscillator(), g = a.createGain();
-    o.type = type;
-    o.frequency.setValueAtTime(freq, a.currentTime);
-    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), a.currentTime + dur);
-    g.gain.setValueAtTime(vol, a.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, a.currentTime + dur);
-    o.connect(g).connect(a.destination);
-    o.start();
-    o.stop(a.currentTime + dur);
-  }
-  function crack() {
-    const a = actx;
-    if (!a) return;
-    const len = Math.floor(a.sampleRate * 0.12);
-    const buf = a.createBuffer(1, len, a.sampleRate);
-    const d = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
-    const src = a.createBufferSource(), g = a.createGain();
-    src.buffer = buf;
-    g.gain.value = 0.5;
-    src.connect(g).connect(a.destination);
-    src.start();
-    tone(1400, 0.08, 'square', 0.08, -800);
-  }
-  const sfx = {
-    crack,
-    catch: () => { tone(520, 0.08, 'triangle', 0.25); setTimeout(() => tone(780, 0.12, 'triangle', 0.2), 70); },
-    great: () => { [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => tone(f, 0.15, 'triangle', 0.2), i * 80)); },
-    miss: () => tone(220, 0.4, 'sawtooth', 0.12, -120),
-    jump: () => tone(300, 0.15, 'sine', 0.1, 300),
-    dive: () => tone(180, 0.2, 'sine', 0.12, -60),
-  };
+  // ---------- サウンド(sound.js) ----------
+  function audio() { Sound.init(); }
 
   // ---------- 入力 ----------
   const keys = new Set();
@@ -100,6 +58,7 @@
     jump: { x: 740, y: 590, r: 38, label: 'ジャンプ', key: 'Z' },
     dive: { x: 790, y: 470, r: 38, label: 'ダイブ', key: 'X' },
   };
+  const MUTE = { x: 596, y: 36, r: 20 };
   const pointers = new Map(); // pointerId -> 'ring' | 'dash' | 'jump' | 'dive' | 'none'
   const ringInput = { active: false, mx: 0, my: 0 };
 
@@ -111,6 +70,7 @@
       if (k === 'x' || k === 'k') pressed.dive = true;
       if (k === ' ' || k === 'Enter') pressed.start = true;
       if (k === 'p' || k === 'Escape') togglePause();
+      if (k === 'm') Sound.setMuted(!Sound.muted);
     }
     keys.add(k);
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) e.preventDefault();
@@ -146,6 +106,11 @@
     e.preventDefault();
     canvas.setPointerCapture(e.pointerId);
     const p = canvasPos(e);
+    if (Math.hypot(p.x - MUTE.x, p.y - MUTE.y) <= MUTE.r + 6) {
+      Sound.setMuted(!Sound.muted);
+      pointers.set(e.pointerId, 'none');
+      return;
+    }
     if (state.phase === 'title' || state.phase === 'over') {
       if (state.phase !== 'over' || state.overT > 1.0) pressed.start = true;
       pointers.set(e.pointerId, 'none');
@@ -345,7 +310,7 @@
     state.phase = 'flight';
     state.phaseT = 0;
     state.ball.waiting = false;
-    sfx.crack();
+    Sound.crack();
   }
 
   // ---------- 野手 ----------
@@ -376,13 +341,13 @@
         if (inp.jump) {
           setMode(f, 'jump');
           f.vx *= 0.6; f.vy *= 0.6;
-          sfx.jump();
+          Sound.jump();
         } else if (inp.dive) {
           const d = mag > 0.2 ? { x: mx / mag, y: my / mag } : { x: Math.sin(f.face), y: Math.cos(f.face) };
           f.dir = d;
           f.face = Math.atan2(d.x, d.y);
           setMode(f, 'dive');
-          sfx.dive();
+          Sound.dive();
         }
       }
     } else if (f.mode === 'jump') {
@@ -517,7 +482,7 @@
     state.lastResult = { ok: true, kind };
     popup(label, kind === 'normal' ? '#ffffff' : '#ffe14d', kind === 'normal' ? 40 : 52);
     popup('+' + pts, '#9fe8ff', 26, 0.25);
-    if (kind === 'normal' || kind === 'running') sfx.catch(); else sfx.great();
+    celebrate(kind);
     endFlight();
   }
 
@@ -528,8 +493,32 @@
     const hr = d > FENCE;
     state.lastResult = { ok: false, kind: hr ? 'hr' : 'hit' };
     popup(hr ? 'ホームラン…' : 'ヒット…', '#ff6b6b', 46);
-    sfx.miss();
+    Sound.sigh(hr ? 1.3 : 1);
     endFlight();
+  }
+
+  // アウトを取ったら花火と大歓声。難しい捕り方ほど派手に
+  function celebrate(kind) {
+    const great = kind === 'dive' || kind === 'jump' || kind === 'hr';
+    const milestone = state.streak > 0 && state.streak % 10 === 0;
+    Sound.glove();
+    Sound.cheer(great ? 1.5 : 1.1, great ? 4.5 : 3.2);
+    if (great || milestone) Sound.horn();
+    let n = kind === 'hr' ? 7 : great ? 5 : 3;
+    if (milestone) {
+      n += 3;
+      popup(`${state.streak} 連続アウト!`, '#ff8a65', 34, 0.5);
+    }
+    fireworks(n, great);
+  }
+
+  function fireworks(n, big, gap = 0.3) {
+    for (let i = 0; i < n; i++) {
+      const t = 0.1 + i * gap + Math.random() * 0.15;
+      Scene3D.firework(t, big);
+      Sound.launch(t);
+      Sound.boom(t + Scene3D.ROCKET_T);
+    }
   }
 
   function endFlight() {
@@ -601,6 +590,10 @@
       state.newRecord = true;
       saveBest(state.best);
     }
+    const perfect = state.catches === TOTAL;
+    Sound.fanfare(perfect);
+    Sound.cheer(perfect ? 1.6 : 0.8, perfect ? 6 : 3);
+    if (perfect) { Sound.horn(); fireworks(16, true, 0.35); } else if (state.catches >= 85) fireworks(6, false, 0.4);
   }
 
   // ---------- 描画(2D オーバーレイ) ----------
@@ -817,7 +810,7 @@
       'ジャンプ : Z  — フェンス際の打球はジャンプで「ホームランキャッチ」',
       'ダイブ : X  — 前に落ちるライナーは飛び込んで捕れ!',
       '捕球は自動。芝に落ちるボールの「影」で落下点を読もう。',
-      '右上のミニマップ(ホームが上)で打球の方向を早めにつかめ。',
+      '右上のミニマップ(ホームが上)で打球の方向を早めにつかめ。 M : 音のオン/オフ',
     ];
     lines.forEach((l, i) => ctx.fillText(l, W / 2, 262 + i * 30));
     if (state.best) centerText(`ベスト: ${state.best.catches} / ${TOTAL} 球  (SCORE ${state.best.score})`, 470, 20, '#9fe8ff');
@@ -873,6 +866,27 @@
     }
     if (state.phase === 'title') drawTitle();
     if (state.phase === 'over') drawOver();
+    drawMute();
+  }
+
+  function drawMute() {
+    const { x, y, r } = MUTE;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.moveTo(x - 9, y - 4); ctx.lineTo(x - 4, y - 4); ctx.lineTo(x + 2, y - 10);
+    ctx.lineTo(x + 2, y + 10); ctx.lineTo(x - 4, y + 4); ctx.lineTo(x - 9, y + 4);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+    if (Sound.muted) {
+      ctx.beginPath(); ctx.moveTo(x + 5, y - 5); ctx.lineTo(x + 12, y + 5); ctx.moveTo(x + 12, y - 5); ctx.lineTo(x + 5, y + 5); ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.arc(x + 3, y, 6, -0.9, 0.9); ctx.stroke();
+      ctx.beginPath(); ctx.arc(x + 3, y, 11, -0.9, 0.9); ctx.stroke();
+    }
+    ctx.restore();
   }
 
   // ---------- メインループ ----------
@@ -897,6 +911,7 @@
     if (api.hold) acc = 0; // テスト用: シミュレーションを止めて描画だけ行う
     while (acc >= DT) { update(DT); acc -= DT; }
     Scene3D.render(state, frameDt, { jumpHeight, forward });
+    Sound.update(state);
     draw();
     requestAnimationFrame(frame);
   }

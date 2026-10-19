@@ -275,6 +275,7 @@ window.Scene3D = (() => {
 
     // 照明塔
     const glow = glowTexture();
+    glowTex = glow;
     const towers = [-150, -112, -70, 70, 112, 150, -25, 25];
     for (const deg of towers) {
       const phi = deg * Math.PI / 180;
@@ -394,13 +395,14 @@ window.Scene3D = (() => {
     const armL = new THREE.Mesh(armGeo, uni), armR = new THREE.Mesh(armGeo, uni);
     armL.position.set(0.31, 1.52, 0); armR.position.set(-0.31, 1.52, 0);
     body.add(armL, armR);
+    let glove = null;
     if (opt.glove) {
-      const glove = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), new THREE.MeshLambertMaterial({ color: 0x9a6430 }));
+      glove = new THREE.Mesh(new THREE.SphereGeometry(0.13, 10, 8), new THREE.MeshLambertMaterial({ color: 0x9a6430 }));
       glove.scale.set(1, 1.2, 0.7);
       glove.position.set(0, -0.62, 0.02);
       armL.add(glove);
     }
-    return { root, body, legL, legR, armL, armR, torso };
+    return { root, body, legL, legR, armL, armR, torso, glove };
   }
 
   function buildPlayers() {
@@ -456,6 +458,92 @@ window.Scene3D = (() => {
     scene.add(trailLine);
   }
 
+  // ---------- 花火(ホーム後方のスタンド上空) ----------
+  const ROCKET_T = 0.9;
+  const FW_COLORS = [0xff5252, 0xffd740, 0x69f0ae, 0x40c4ff, 0xe040fb, 0xffffff, 0xff9100];
+  let clock = 0, glowTex = null;
+  const pendingFw = [], rockets = [], bursts = [];
+
+  function firework(delay, big) { pendingFw.push({ at: clock + delay, big }); }
+
+  function spawnRocket(big) {
+    const x = (Math.random() - 0.5) * 120, y = -40 - Math.random() * 35;
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xfff3c0, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+    sp.scale.set(3, 3, 1);
+    scene.add(sp);
+    rockets.push({ sp, x, y, z0: 35, z1: (big ? 75 : 62) + Math.random() * 22, t: 0, big });
+  }
+
+  function spawnBurst(x, y, z, big) {
+    const n = big ? 320 : 220;
+    const pos = new Float32Array(n * 3), vel = [], col = new Float32Array(n * 3);
+    const c1 = new THREE.Color(FW_COLORS[(Math.random() * FW_COLORS.length) | 0]);
+    const c2 = new THREE.Color(FW_COLORS[(Math.random() * FW_COLORS.length) | 0]);
+    const speed = big ? 36 : 28;
+    for (let i = 0; i < n; i++) {
+      const u = Math.random() * 2 - 1, a = Math.random() * Math.PI * 2, r = Math.sqrt(1 - u * u);
+      const sv = speed * (0.85 + Math.random() * 0.3);
+      vel.push(new THREE.Vector3(r * Math.cos(a) * sv, u * sv, r * Math.sin(a) * sv));
+      const p = V(x, y, z);
+      pos.set([p.x, p.y, p.z], i * 3);
+      const c = i % 3 === 0 ? c2 : c1;
+      col.set([c.r, c.g, c.b], i * 3);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    const mat = new THREE.PointsMaterial({ size: big ? 4.5 : 3.6, map: glowTex, vertexColors: true, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false });
+    const pts = new THREE.Points(geo, mat);
+    pts.frustumCulled = false;
+    scene.add(pts);
+    // 破裂の瞬間の閃光
+    const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: c1, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, fog: false }));
+    flash.position.copy(V(x, y, z));
+    flash.scale.set(90, 90, 1);
+    scene.add(flash);
+    bursts.push({ pts, vel, flash, t: 0, life: 2.4 });
+  }
+
+  function updateFireworks(dt) {
+    clock += dt;
+    for (let i = pendingFw.length - 1; i >= 0; i--) {
+      if (pendingFw[i].at <= clock) { spawnRocket(pendingFw[i].big); pendingFw.splice(i, 1); }
+    }
+    for (let i = rockets.length - 1; i >= 0; i--) {
+      const r = rockets[i];
+      r.t += dt;
+      const u = Math.min(1, r.t / ROCKET_T);
+      const z = r.z0 + (r.z1 - r.z0) * (1 - (1 - u) * (1 - u));
+      r.sp.position.copy(V(r.x + Math.sin(r.t * 20) * 0.3, r.y, z));
+      if (u >= 1) {
+        scene.remove(r.sp); r.sp.material.dispose();
+        spawnBurst(r.x, r.y, z, r.big);
+        rockets.splice(i, 1);
+      }
+    }
+    for (let i = bursts.length - 1; i >= 0; i--) {
+      const bu = bursts[i];
+      bu.t += dt;
+      const arr = bu.pts.geometry.attributes.position.array;
+      const drag = Math.exp(-1.6 * dt);
+      for (let k = 0; k < bu.vel.length; k++) {
+        const v = bu.vel[k];
+        v.multiplyScalar(drag);
+        v.y -= 5 * dt;
+        arr[k * 3] += v.x * dt; arr[k * 3 + 1] += v.y * dt; arr[k * 3 + 2] += v.z * dt;
+      }
+      bu.pts.geometry.attributes.position.needsUpdate = true;
+      const fade = 1 - bu.t / bu.life;
+      bu.pts.material.opacity = Math.max(0, fade < 0.4 ? fade / 0.4 * (0.6 + 0.4 * Math.random()) : 1);
+      bu.flash.material.opacity = Math.max(0, 1 - bu.t * 4);
+      if (bu.t >= bu.life) {
+        scene.remove(bu.pts); scene.remove(bu.flash);
+        bu.pts.geometry.dispose(); bu.pts.material.dispose(); bu.flash.material.dispose();
+        bursts.splice(i, 1);
+      }
+    }
+  }
+
   // ---------- 初期化 ----------
   function init(canvas) {
     renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -509,7 +597,7 @@ window.Scene3D = (() => {
   }
 
   // ---------- 毎フレーム ----------
-  function poseFielder(f, jumpH, time) {
+  function poseFielder(f, jumpH, time, b) {
     const r = fielderRig;
     r.root.position.copy(V(f.x, f.y, jumpH));
     r.root.rotation.y = Math.PI - f.face;
@@ -537,6 +625,22 @@ window.Scene3D = (() => {
       r.body.rotation.x = Math.min(0.35, speed * 0.03);
       r.body.position.y = Math.abs(Math.sin(ph)) * 0.05 * swing;
     }
+    // 捕ったらグラブを高く掲げる
+    if (b && b.caught && f.mode !== 'dive' && f.mode !== 'down') {
+      r.armL.rotation.x = -2.9; r.armL.rotation.z = 0.15;
+    }
+    // ボールが近づいたらグラブを差し出す
+    if (b && !b.waiting && !b.landed && !b.caught && f.mode !== 'dive' && f.mode !== 'down') {
+      const dx = b.x - f.x, dy = b.y - f.y, dh = Math.hypot(dx, dy);
+      if (dh < 4.5 && b.z < 6 && b.vz < 0) {
+        const sf = Math.sin(f.face), cf = Math.cos(f.face);
+        const fwd = dx * sf + dy * cf, right = dx * cf - dy * sf;
+        const elev = Math.atan2(b.z - 1.5 - jumpH * 0.5, Math.max(0.3, fwd));
+        const w = Math.min(1, (4.5 - dh) / 2);
+        r.armL.rotation.x = r.armL.rotation.x * (1 - w) + Math.max(-3.1, Math.min(-0.4, -(Math.PI / 2 + elev))) * w;
+        r.armL.rotation.z = Math.max(-1.0, Math.min(1.0, -Math.atan2(right, 1.2))) * w;
+      }
+    }
     fielderShadow.position.copy(V(f.x, f.y, 0.03));
     const s = 1 - Math.min(0.5, jumpH * 0.3);
     fielderShadow.scale.setScalar(f.mode === 'down' || f.mode === 'dive' ? 1.5 : s);
@@ -548,7 +652,8 @@ window.Scene3D = (() => {
     const b = state.ball;
     updateScoreboard(state);
 
-    poseFielder(f, info.jumpHeight(f), state.time);
+    poseFielder(f, info.jumpHeight(f), state.time, b);
+    updateFireworks(dt);
 
     // ピッチャーとバッター
     const pt = state.phase === 'ready' ? state.phaseT : 9;
@@ -558,9 +663,16 @@ window.Scene3D = (() => {
 
     // ボール
     const show = b && !b.waiting;
-    ballMesh.visible = ballShadow.visible = show;
+    ballMesh.visible = show;
+    ballShadow.visible = show && !b.caught;
     if (show) {
-      ballMesh.position.copy(V(b.x, b.y, b.z + BALL_R * 0.5));
+      if (b.caught) {
+        fielderRig.root.updateMatrixWorld(true);
+        fielderRig.glove.getWorldPosition(ballMesh.position);
+        ballMesh.position.y += 0.12; // グラブからのぞかせる
+      } else {
+        ballMesh.position.copy(V(b.x, b.y, b.z + BALL_R * 0.5));
+      }
       ballShadow.position.copy(V(b.x, b.y, 0.04));
       const s = Math.max(0.6, 1 - b.z * 0.012);
       ballShadow.scale.setScalar(s);
@@ -600,7 +712,7 @@ window.Scene3D = (() => {
     // 野手の上半身が画面から切れない範囲でボールを追って見上げる
     const halfV = camera.fov * Math.PI / 360;
     const maxPitch = halfV - Math.atan2(camH - 0.9, back) - 0.05;
-    let pitch = Math.min(0.08, maxPitch);
+    let pitch = Math.min(state.phase === 'result' && b && b.caught ? 0.3 : 0.08, maxPitch);
     if (show && !b.caught) {
       const along = (b.x - cx) * cam.fx + (b.y - cy) * cam.fy;
       const elev = Math.atan2(b.z - camH, Math.max(0.5, along));
@@ -620,5 +732,5 @@ window.Scene3D = (() => {
     return { x: (tmp.x + 1) / 2 * W, y: (1 - tmp.y) / 2 * H, behind: tmp.z > 1 };
   }
 
-  return { init, render, resize, project };
+  return { init, render, resize, project, firework, ROCKET_T };
 })();
