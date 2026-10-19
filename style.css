@@ -83,3 +83,66 @@ html, body {
 #view {
   background: #0a0d1c;
 }
+
+/* 結果画面のシェアボタン(キャンバスの上に重ねる) */
+#share {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  transform: translateX(-50%);
+  width: min(420px, 60%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: sans-serif;
+  z-index: 2;
+}
+
+#share[hidden] {
+  display: none;
+}
+
+#share .row {
+  display: flex;
+  gap: 8px;
+}
+
+#share .sbtn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 10px;
+  padding: 7px 10px;
+  font: inherit;
+  font-weight: 800;
+  font-size: clamp(12px, 2.4vh, 16px);
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  background: #dfe7f7;
+  color: #1b2440;
+}
+
+#share .sbtn.main {
+  padding: 9px 12px;
+  font-size: clamp(14px, 3vh, 19px);
+  font-weight: 900;
+  background: linear-gradient(#7fe3ff, #2f9bff);
+  color: #031a33;
+  box-shadow: 0 4px 0 #11589b, 0 8px 18px rgba(0, 0, 0, 0.4);
+}
+
+#share .sbtn.main small {
+  display: block;
+  font-size: 0.65em;
+  font-weight: 700;
+  opacity: 0.75;
+}
+
+#share .sbtn:active {
+  transform: translateY(2px);
+}

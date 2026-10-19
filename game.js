@@ -218,7 +218,7 @@
     Object.assign(state, {
       phase: 'ready', paused: false, index: 0, catches: 0, misses: 0, score: 0,
       streak: 0, bestStreak: 0, tech: { dive: 0, jump: 0, hr: 0, running: 0 },
-      phaseT: 0, overT: 0, ball: null, popups: [], lastResult: null, newRecord: false,
+      phaseT: 0, overT: 0, ball: null, popups: [], lastResult: null, newRecord: false, navUsed: false,
     });
     startBall();
   }
@@ -320,6 +320,7 @@
     state.phaseT = 0;
     state.ball.waiting = false;
     state.ball.nav = predictNav(state.ball);
+    if (state.nav) state.navUsed = true;
     Sound.crack();
   }
 
@@ -584,7 +585,7 @@
       else lock();
     } catch (e) { /* 非対応 */ }
   }
-  window.addEventListener('pointerup', () => { if (state.phase === 'title' || state.phase === 'over') goLandscape(); }, { capture: true });
+  canvas.addEventListener('pointerup', () => { if (state.phase === 'title' || state.phase === 'over') goLandscape(); });
 
   function togglePause() {
     if (state.phase === 'title' || state.phase === 'over') return;
@@ -891,19 +892,118 @@
   function drawOver() {
     ctx.fillStyle = 'rgba(8,14,20,0.68)';
     ctx.fillRect(0, 0, W, H);
-    centerText('ゲームセット', 120, 54, '#ffffff', '900');
-    centerText(`${state.catches} / ${TOTAL} 球 捕球`, 200, 48, state.catches === TOTAL ? '#ffe14d' : '#9fe8ff', '900');
-    if (state.catches === TOTAL) centerText('★ パーフェクト!! 全球捕球 ★', 250, 30, '#ffe14d');
+    centerText('ゲームセット', 92, 46, '#ffffff', '900');
+    centerText(`${state.catches} / ${TOTAL} 球 捕球`, 160, 46, state.catches === TOTAL ? '#ffe14d' : '#9fe8ff', '900');
+    if (state.catches === TOTAL) centerText('★ パーフェクト!! 全球捕球 ★', 200, 24, '#ffe14d');
     const [rank, col] = rankOf(state.catches);
-    centerText(`称号: ${rank}`, 295, 30, col);
-    ctx.font = '18px sans-serif';
+    centerText(`称号: ${rank}`, 238, 28, col);
+    ctx.font = '17px sans-serif';
     ctx.fillStyle = '#e6e6e6';
     ctx.textAlign = 'center';
-    ctx.fillText(`SCORE ${state.score}   最大連続捕球 ${state.bestStreak}`, W / 2, 345);
-    ctx.fillText(`ダイビング ${state.tech.dive}  ジャンピング ${state.tech.jump}  ホームランキャッチ ${state.tech.hr}  ランニング ${state.tech.running}`, W / 2, 377);
-    if (state.newRecord) centerText('NEW RECORD!', 425, 28, '#ff8a65');
-    else if (state.best) centerText(`ベスト: ${state.best.catches} 球 (SCORE ${state.best.score})`, 425, 20, '#9fe8ff');
-    if (state.overT > 1.0 && Math.floor(state.time * 2) % 2 === 0) centerText('SPACE / タップでもう一度', 520, 28);
+    ctx.fillText(`SCORE ${state.score}   最大連続捕球 ${state.bestStreak}   ${state.navUsed ? 'ナビあり' : 'ナビなし'}`, W / 2, 274);
+    ctx.fillText(`ダイビング ${state.tech.dive}  ジャンピング ${state.tech.jump}  ホームランキャッチ ${state.tech.hr}  ランニング ${state.tech.running}`, W / 2, 300);
+    if (state.newRecord) centerText('NEW RECORD!', 336, 24, '#ff8a65');
+    else if (state.best) centerText(`ベスト: ${state.best.catches} 球 (SCORE ${state.best.score})`, 336, 18, '#9fe8ff');
+    // この下(y 約 360〜500)は HTML のシェアボタン
+    if (state.overT > 1.0 && Math.floor(state.time * 2) % 2 === 0) centerText('SPACE / ここをタップでもう一度', 560, 24);
+  }
+
+  // ---------- シェア(結果画面) ----------
+  // 対応端末では成績画像つきで共有シートを開き、だめなら X・LINE・コピーで共有する
+  const SHARE_URL = 'https://techgym.jp/column/claude-code-game-center-fly/';
+  const shareEl = document.getElementById('share');
+  const $id = (id) => document.getElementById(id);
+
+  function shareText() {
+    const [rank] = rankOf(state.catches);
+    const perfect = state.catches === TOTAL ? '【パーフェクト!】' : '';
+    return `⚾センターフライで${state.catches}/${TOTAL}球捕球!${perfect}\n` +
+      `称号:${rank} SCORE ${state.score}(${state.navUsed ? 'ナビあり' : 'ナビなし'})\n` +
+      `ダイビング${state.tech.dive}・ホームランキャッチ${state.tech.hr}・最大${state.bestStreak}連続\n` +
+      '#センターフライ #ClaudeCode';
+  }
+
+  function prepareShare() {
+    const text = shareText();
+    $id('shareX').href = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(text) + '&url=' + encodeURIComponent(SHARE_URL);
+    $id('shareLine').href = 'https://line.me/R/share?text=' + encodeURIComponent(text + '\n' + SHARE_URL);
+    $id('shareMsg').textContent = navigator.share ? '成績画像つきでシェアできます' : 'X・LINE・コピーからシェアしてください';
+  }
+
+  // 成績カード画像(1200x630)
+  function makeShareImage() {
+    const c = document.createElement('canvas');
+    c.width = 1200; c.height = 630;
+    const g = c.getContext('2d');
+    const bg = g.createLinearGradient(0, 0, 0, 630);
+    bg.addColorStop(0, '#060a1f'); bg.addColorStop(0.6, '#1d2b5c'); bg.addColorStop(1, '#2d6a2c');
+    g.fillStyle = bg; g.fillRect(0, 0, 1200, 630);
+    for (let i = 0; i < 120; i++) { g.fillStyle = `rgba(255,255,255,${Math.random() * 0.5})`; g.fillRect(Math.random() * 1200, Math.random() * 300, 2, 2); }
+    for (const [x, y, col] of [[150, 140, '#ff5252'], [1060, 120, '#ffd740'], [990, 320, '#40c4ff'], [210, 380, '#e040fb']]) {
+      g.strokeStyle = col; g.lineWidth = 3;
+      for (let k = 0; k < 24; k++) {
+        const a = k / 24 * Math.PI * 2;
+        g.beginPath(); g.moveTo(x + Math.cos(a) * 20, y + Math.sin(a) * 20); g.lineTo(x + Math.cos(a) * 80, y + Math.sin(a) * 80); g.stroke();
+      }
+    }
+    g.fillStyle = '#3a8a36'; g.fillRect(0, 560, 1200, 70);
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    const font = (w, sz) => `${w} ${sz}px "Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif`;
+    g.fillStyle = '#9fd8ff'; g.font = font(800, 36); g.fillText(`センターフライ(${state.navUsed ? 'ナビあり' : 'ナビなし'})`, 600, 70);
+    const gold = g.createLinearGradient(0, 120, 0, 280);
+    gold.addColorStop(0, '#fff6c4'); gold.addColorStop(0.5, '#ffd000'); gold.addColorStop(1, '#ff8a00');
+    g.fillStyle = gold; g.font = font(900, 140); g.fillText(`${state.catches}/${TOTAL}球`, 600, 200);
+    const [rank] = rankOf(state.catches);
+    g.fillStyle = '#ff9d3c'; g.font = font(900, 52); g.fillText(`称号:${rank}`, 600, 330);
+    g.fillStyle = '#ffffff'; g.font = font(800, 40);
+    g.fillText(`SCORE ${state.score} ・ 最大${state.bestStreak}連続アウト`, 600, 415);
+    g.fillText(`ダイビング${state.tech.dive} ジャンピング${state.tech.jump} HRキャッチ${state.tech.hr}`, 600, 485);
+    g.fillStyle = '#eef6e8'; g.font = font(700, 28); g.fillText('#センターフライ  #ClaudeCode', 600, 595);
+    return new Promise((res) => c.toBlob(res, 'image/png'));
+  }
+
+  async function shareResult() {
+    const text = shareText();
+    if (navigator.share) {
+      try {
+        const blob = await makeShareImage();
+        const file = blob && new File([blob], 'center-fly-result.png', { type: 'image/png' });
+        const data = { title: 'センターフライ', text: text + '\n' + SHARE_URL };
+        if (file && navigator.canShare && navigator.canShare({ files: [file] })) data.files = [file];
+        await navigator.share(data);
+        return;
+      } catch (e) {
+        if (e && e.name === 'AbortError') return; // 共有シートを閉じただけ
+      }
+    }
+    copyResult();
+  }
+
+  async function copyResult() {
+    const text = shareText() + '\n' + SHARE_URL;
+    let ok = false;
+    try { await navigator.clipboard.writeText(text); ok = true; } catch (e) { /* 非対応 */ }
+    if (!ok) {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text; document.body.appendChild(ta);
+        ta.select(); ok = document.execCommand('copy'); ta.remove();
+      } catch (e) { /* 非対応 */ }
+    }
+    $id('shareMsg').textContent = ok ? '結果をコピーしました!SNSに貼り付けてください' : 'コピーできませんでした。X・LINEボタンを使ってください';
+  }
+
+  $id('shareBtn').addEventListener('click', () => { audio(); shareResult(); });
+  $id('shareCopy').addEventListener('click', copyResult);
+  // シェア欄の操作でゲームが再スタートしないようにする
+  for (const ev of ['pointerdown', 'pointerup', 'keydown']) shareEl.addEventListener(ev, (e) => e.stopPropagation());
+
+  function updateShareVisibility() {
+    const show = state.phase === 'over' && state.overT > 0.6;
+    if (show !== !shareEl.hidden) {
+      shareEl.hidden = !show;
+      if (show) prepareShare();
+    }
   }
 
   function draw() {
@@ -929,6 +1029,7 @@
     }
     if (state.phase === 'title') drawTitle();
     if (state.phase === 'over') drawOver();
+    updateShareVisibility();
     drawMute();
     drawNavButton();
   }
@@ -977,7 +1078,7 @@
   function drawMute() {
     const { x, y, r } = MUTE;
     ctx.save();
-    if (!Sound.muted && !Sound.ready && state.phase !== 'title') {
+    if (!Sound.muted && !Sound.ready && state.phase !== 'title' && state.phase !== 'over') {
       ctx.fillStyle = 'rgba(0,0,0,0.55)';
       ctx.fillRect(x - 84, y + 26, 168, 24);
       ctx.fillStyle = '#ffe14d';

@@ -21,6 +21,14 @@
   <div id="stage">
     <canvas id="view"></canvas>
     <canvas id="game" width="960" height="640"></canvas>
+    <div id="share" hidden>
+      <button id="shareBtn" class="sbtn main" type="button">📤 結果をシェア<small id="shareMsg">成績画像つきでシェアできます</small></button>
+      <div class="row">
+        <a id="shareX" class="sbtn" target="_blank" rel="noopener">𝕏 ポスト</a>
+        <a id="shareLine" class="sbtn" target="_blank" rel="noopener">LINE</a>
+        <button id="shareCopy" class="sbtn" type="button">コピー</button>
+      </div>
+    </div>
   </div>
 </div>
 <script src="vendor/three.min.js"></script>
