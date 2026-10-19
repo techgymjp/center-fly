@@ -4,7 +4,8 @@
 // 画面は野手の背中越しにホームを見る視点(描画は scene3d.js)。
 (() => {
   // ---------- 定数 ----------
-  const W = 960, H = 640;
+  const H = 640;
+  let W = 960; // 画面の横幅に合わせて変わる(高さ 640 基準の論理座標)
   const G = 9.8;
   const FENCE = 122;      // フェンスまでの距離
   const WALL_H = 3.0;     // フェンスの高さ
@@ -59,6 +60,7 @@
     dive: { x: 790, y: 470, r: 38, label: 'ダイブ', key: 'X' },
   };
   const MUTE = { x: 596, y: 36, r: 20 };
+  const NAVBTN = { x: 660, y: 36, w: 76, h: 30 };
   const pointers = new Map(); // pointerId -> 'ring' | 'dash' | 'jump' | 'dive' | 'none'
   const ringInput = { active: false, mx: 0, my: 0 };
 
@@ -71,6 +73,7 @@
       if (k === ' ' || k === 'Enter') pressed.start = true;
       if (k === 'p' || k === 'Escape') togglePause();
       if (k === 'm') Sound.setMuted(!Sound.muted);
+      if (k === 'n') toggleNav();
     }
     keys.add(k);
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) e.preventDefault();
@@ -108,6 +111,11 @@
     const p = canvasPos(e);
     if (Math.hypot(p.x - MUTE.x, p.y - MUTE.y) <= MUTE.r + 6) {
       Sound.setMuted(!Sound.muted);
+      pointers.set(e.pointerId, 'none');
+      return;
+    }
+    if (Math.abs(p.x - NAVBTN.x) <= NAVBTN.w / 2 + 4 && Math.abs(p.y - NAVBTN.y) <= NAVBTN.h / 2 + 6) {
+      toggleNav();
       pointers.set(e.pointerId, 'none');
       return;
     }
@@ -190,6 +198,7 @@
     popups: [],
     lastResult: null,
     best: loadBest(),
+    nav: loadNav(),
     time: 0,
     newRecord: false,
   };
@@ -310,7 +319,35 @@
     state.phase = 'flight';
     state.phaseT = 0;
     state.ball.waiting = false;
+    state.ball.nav = predictNav(state.ball);
     Sound.crack();
+  }
+
+  // 着地点ナビ: 捕球する高さ(約1m)まで落ちてくる地点。フェンス際の打球はフェンスを越える地点
+  function predictNav(b) {
+    const at = (t) => ({
+      x: b.p0.x + b.v.x * t + 0.5 * b.a.x * t * t,
+      y: b.p0.y + b.v.y * t,
+    });
+    if (b.type === 'wall') {
+      let t = 0;
+      while (t < 10) {
+        const p = at(t);
+        if (Math.hypot(p.x, p.y) >= FENCE - 0.6) return { ...p, t, jump: true };
+        t += 0.01;
+      }
+    }
+    const zt = 1.0;
+    const t = (b.v.z + Math.sqrt(b.v.z * b.v.z - 2 * G * (zt - b.p0.z))) / G;
+    return { ...at(t), t, jump: false };
+  }
+
+  function loadNav() {
+    try { return localStorage.getItem('centerfly.nav') !== '0'; } catch (e) { return true; }
+  }
+  function toggleNav() {
+    state.nav = !state.nav;
+    try { localStorage.setItem('centerfly.nav', state.nav ? '1' : '0'); } catch (e) { /* 保存できない環境 */ }
   }
 
   // ---------- 野手 ----------
@@ -530,6 +567,25 @@
     state.popups.push({ text, color, size, t: -delay, life: 1.5, idx: state.popups.length });
   }
 
+  // スマホは横画面で遊ぶ。縦向きの間は案内を出して一時停止する
+  const isTouch = window.matchMedia('(pointer: coarse)').matches;
+  const portraitMQ = window.matchMedia('(orientation: portrait)');
+  const isPortrait = () => isTouch && portraitMQ.matches;
+
+  // スタートのタップで全画面+横向き固定を試す(Android Chrome など。iPhone は非対応なので何もしない)
+  function goLandscape() {
+    if (!isTouch) return;
+    const el = document.documentElement;
+    const lock = () => {
+      if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {});
+    };
+    try {
+      if (!document.fullscreenElement && el.requestFullscreen) el.requestFullscreen({ navigationUI: 'hide' }).then(lock, () => {});
+      else lock();
+    } catch (e) { /* 非対応 */ }
+  }
+  window.addEventListener('pointerup', () => { if (state.phase === 'title' || state.phase === 'over') goLandscape(); }, { capture: true });
+
   function togglePause() {
     if (state.phase === 'title' || state.phase === 'over') return;
     state.paused = !state.paused;
@@ -549,6 +605,7 @@
       return;
     }
     pressed.start = false;
+    if (isPortrait()) { if (!state.paused) state.paused = true; return; }
     if (state.paused) return;
 
     readInput();
@@ -658,6 +715,10 @@
       ctx.beginPath(); ctx.arc(tx(f.x), ty(f.y), 3, 0, Math.PI * 2); ctx.fill();
     }
     const b = state.ball;
+    if (state.nav && b && b.nav && state.phase === 'flight' && !b.caught && !b.landed) {
+      ctx.strokeStyle = '#ffe14d'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(tx(b.nav.x), ty(b.nav.y), 4, 0, Math.PI * 2); ctx.stroke();
+    }
     if (b && !b.waiting) {
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
       ctx.beginPath(); ctx.arc(tx(b.x), ty(b.y), 2, 0, Math.PI * 2); ctx.fill();
@@ -810,7 +871,7 @@
       'ジャンプ : Z  — フェンス際の打球はジャンプで「ホームランキャッチ」',
       'ダイブ : X  — 前に落ちるライナーは飛び込んで捕れ!',
       '捕球は自動。芝に落ちるボールの「影」で落下点を読もう。',
-      '右上のミニマップ(ホームが上)で打球の方向を早めにつかめ。 M : 音のオン/オフ',
+      '黄色い輪が着地点ナビ(N キーでオン/オフ)。M : 音のオン/オフ',
     ];
     lines.forEach((l, i) => ctx.fillText(l, W / 2, 262 + i * 30));
     if (state.best) centerText(`ベスト: ${state.best.catches} / ${TOTAL} 球  (SCORE ${state.best.score})`, 470, 20, '#9fe8ff');
@@ -851,6 +912,7 @@
     const b = state.ball;
     if (state.phase !== 'title') {
       drawBallIndicator();
+      drawNavHint();
       drawMinimap();
       drawHUD();
       drawControls();
@@ -859,7 +921,7 @@
         centerText(`第 ${state.index + 1} 球`, 250, 44, '#ffffff', '900');
         if (b && b.wind) centerText(`風が ${b.wind < 0 ? 'レフト' : 'ライト'}方向に吹いている`, 292, 20, '#ffcc80');
       }
-      if (state.paused) {
+      if (state.paused && !isPortrait()) {
         ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, W, H);
         centerText('PAUSE', H / 2, 56);
         centerText('P / Esc / タップで再開', H / 2 + 44, 20);
@@ -868,6 +930,48 @@
     if (state.phase === 'title') drawTitle();
     if (state.phase === 'over') drawOver();
     drawMute();
+    drawNavButton();
+  }
+
+  function drawNavButton() {
+    const { x, y, w, h } = NAVBTN;
+    ctx.save();
+    ctx.fillStyle = state.nav ? 'rgba(255,225,77,0.9)' : 'rgba(0,0,0,0.5)';
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(x - w / 2, y - h / 2, w, h, h / 2); else ctx.rect(x - w / 2, y - h / 2, w, h);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.fillStyle = state.nav ? '#222' : '#fff';
+    ctx.font = 'bold 13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(`ナビ ${state.nav ? 'ON' : 'OFF'}`, x, y + 5);
+    ctx.restore();
+  }
+
+  // 着地点ナビの技ヒント(ジャンプ!/ダイブ!)
+  function drawNavHint() {
+    const b = state.ball, f = state.fielder;
+    if (!state.nav || state.phase !== 'flight' || !b || !b.nav || b.caught || b.landed) return;
+    const n = b.nav, rem = n.t - b.t;
+    if (rem < 0) return;
+    const d = Math.hypot(n.x - f.x, n.y - f.y);
+    let hint = null;
+    if (n.jump && d < 3 && rem < 1.2) hint = 'ジャンプ!';
+    else if (!n.jump && rem < 0.9 && d - CATCH_R > DASH * rem + 0.2 && d - 2.5 <= DASH * rem + 0.6) hint = 'ダイブ!';
+    if (!hint) return;
+    const p = Scene3D.project(n.x, n.y, 2.5);
+    if (p.behind) return;
+    const blink = Math.floor(state.time * 8) % 2 === 0;
+    ctx.save();
+    ctx.font = '900 30px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+    const px = Math.max(80, Math.min(W - 80, p.x)), py = Math.max(60, Math.min(H - 40, p.y));
+    ctx.strokeText(hint, px, py);
+    ctx.fillStyle = blink ? '#ffe14d' : '#ff7043';
+    ctx.fillText(hint, px, py);
+    ctx.restore();
   }
 
   function drawMute() {
@@ -875,11 +979,11 @@
     ctx.save();
     if (!Sound.muted && !Sound.ready && state.phase !== 'title') {
       ctx.fillStyle = 'rgba(0,0,0,0.55)';
-      ctx.fillRect(x + 26, y - 13, 168, 26);
+      ctx.fillRect(x - 84, y + 26, 168, 24);
       ctx.fillStyle = '#ffe14d';
       ctx.font = 'bold 13px sans-serif';
-      ctx.textAlign = 'left';
-      ctx.fillText('音が出ないときはタップ', x + 34, y + 5);
+      ctx.textAlign = 'center';
+      ctx.fillText('音が出ないときはタップ', x, y + 43);
     }
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
@@ -902,11 +1006,17 @@
   let overlayScale = 1;
   function resize() {
     const r = canvas.getBoundingClientRect();
+    if (!r.width || !r.height) return;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    overlayScale = (r.width / W) * dpr;
+    W = Math.round(H * r.width / r.height);
+    // 右側のボタン類は右端に合わせる
+    BTN.dash.x = W - 100; BTN.jump.x = W - 220; BTN.dive.x = W - 170;
+    MUTE.x = W / 2 + 116;
+    NAVBTN.x = MUTE.x + 64;
+    overlayScale = (r.height / H) * dpr;
     canvas.width = Math.round(W * overlayScale);
     canvas.height = Math.round(H * overlayScale);
-    Scene3D.resize(r.width, r.height);
+    Scene3D.resize(r.width, r.height, W);
   }
   Scene3D.init(document.getElementById('view'));
   window.addEventListener('resize', resize);

@@ -2,7 +2,8 @@
 // センターフライ — 3D 描画(野手の背中越しにホームを見る視点)
 // ワールド座標 (x, y, z-up) は three.js の (x, z, -y) に対応させる。
 window.Scene3D = (() => {
-  const W = 960, H = 640;
+  const H = 640;
+  let W = 960;
   const FENCE = 122;
   const MOUND = { x: 0, y: 18.44 };
   const BASE = 27.43 / Math.SQRT2; // 塁間を45°回転したときの座標
@@ -10,7 +11,7 @@ window.Scene3D = (() => {
 
   let renderer, scene, camera, ready = false;
   let fielderRig, ballMesh, ballShadow, fielderShadow, trailLine, trailPts = [];
-  let batter, pitcher, scoreboard, fenceMat;
+  let batter, pitcher, scoreboard, fenceMat, navRing, navDot;
   const cam = { fx: 0, fy: -1, pitch: 0.12, init: false };
 
   const V = (x, y, z = 0) => new THREE.Vector3(x, z, -y);
@@ -544,6 +545,35 @@ window.Scene3D = (() => {
     }
   }
 
+  function buildNav() {
+    const mat = new THREE.MeshBasicMaterial({ color: 0xffe14d, transparent: true, opacity: 0.85, depthWrite: false, side: THREE.DoubleSide, fog: false });
+    navRing = new THREE.Mesh(new THREE.RingGeometry(0.82, 1, 48), mat);
+    navRing.rotation.x = -Math.PI / 2;
+    navDot = new THREE.Mesh(new THREE.CircleGeometry(0.35, 20), mat.clone());
+    navDot.rotation.x = -Math.PI / 2;
+    navRing.renderOrder = navDot.renderOrder = 2;
+    scene.add(navRing, navDot);
+  }
+
+  // 着地点ナビ: 最初は大きな輪で、落下が近づくほど落下点に絞られる
+  function updateNav(state) {
+    const b = state.ball;
+    const on = state.nav && state.phase === 'flight' && b && b.nav && !b.waiting && !b.caught && !b.landed && b.t > 0.25;
+    navRing.visible = navDot.visible = !!on;
+    if (!on) return;
+    const n = b.nav;
+    const u = Math.max(0, Math.min(1, (n.t - b.t) / n.t));
+    const r = 1.1 + 9 * u * u;
+    navRing.position.copy(V(n.x, n.y, 0.07));
+    navRing.scale.setScalar(r);
+    navDot.position.copy(V(n.x, n.y, 0.08));
+    const pulse = 0.65 + 0.3 * Math.sin(state.time * 10);
+    navRing.material.opacity = pulse;
+    navDot.material.opacity = 0.35 + 0.5 * (1 - u);
+    navRing.material.color.setHex(n.jump ? 0xff7043 : 0xffe14d);
+    navDot.material.color.copy(navRing.material.color);
+  }
+
   // ---------- 初期化 ----------
   function init(canvas) {
     renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
@@ -588,11 +618,15 @@ window.Scene3D = (() => {
     buildStadium();
     buildPlayers();
     buildBall();
+    buildNav();
     ready = true;
   }
 
-  function resize(cssW, cssH) {
+  function resize(cssW, cssH, logicalW) {
     if (!ready) return;
+    W = logicalW;
+    camera.aspect = cssW / cssH;
+    camera.updateProjectionMatrix();
     renderer.setSize(cssW, cssH, false);
   }
 
@@ -654,6 +688,7 @@ window.Scene3D = (() => {
 
     poseFielder(f, info.jumpHeight(f), state.time, b);
     updateFireworks(dt);
+    updateNav(state);
 
     // ピッチャーとバッター
     const pt = state.phase === 'ready' ? state.phaseT : 9;
