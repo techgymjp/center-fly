@@ -815,6 +815,7 @@
     lines.forEach((l, i) => ctx.fillText(l, W / 2, 262 + i * 30));
     if (state.best) centerText(`ベスト: ${state.best.catches} / ${TOTAL} 球  (SCORE ${state.best.score})`, 470, 20, '#9fe8ff');
     if (Math.floor(state.time * 2) % 2 === 0) centerText('SPACE / タップでプレイボール', 540, 30, '#ffffff');
+    centerText('音が鳴ります(M キー / 上のボタンで消音)。iPhone はマナーモードを解除してください', 600, 15, '#cfd8dc', 'normal');
   }
 
   function rankOf(c) {
@@ -872,6 +873,14 @@
   function drawMute() {
     const { x, y, r } = MUTE;
     ctx.save();
+    if (!Sound.muted && !Sound.ready && state.phase !== 'title') {
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(x + 26, y - 13, 168, 26);
+      ctx.fillStyle = '#ffe14d';
+      ctx.font = 'bold 13px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.fillText('音が出ないときはタップ', x + 34, y + 5);
+    }
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#fff';

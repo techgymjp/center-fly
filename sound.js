@@ -8,10 +8,20 @@ window.Sound = (() => {
   try { muted = localStorage.getItem('centerfly.muted') === '1'; } catch (e) { /* 保存できない環境 */ }
   const rand = (a, b) => a + (b - a) * Math.random();
 
+  // ユーザー操作のたびに呼ぶ。スマホは touchend / click の中でないと音が解禁されない
   function init() {
-    if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
+    if (AC) {
+      if (AC.state !== 'running') { AC.resume(); unlockBlip(); }
+      return;
+    }
+    try {
+      // iPhone のマナーモードでも鳴るように(iOS 17 以降)
+      if (navigator.audioSession) navigator.audioSession.type = 'playback';
+    } catch (e) { /* 非対応 */ }
     try {
       AC = new (window.AudioContext || window.webkitAudioContext)();
+      AC.resume();
+      unlockBlip();
       master = AC.createGain();
       master.gain.value = muted ? 0 : 0.9;
       master.connect(AC.destination);
@@ -39,6 +49,17 @@ window.Sound = (() => {
       bandBus.connect(master);
       bandBus.connect(rev).connect(wet).connect(master);
     } catch (e) { AC = null; }
+  }
+
+  // 無音を一瞬鳴らして音声出力を確実に開始させる(古い iOS 対策)
+  function unlockBlip() {
+    try {
+      const buf = AC.createBuffer(1, 1, AC.sampleRate);
+      const src = AC.createBufferSource();
+      src.buffer = buf;
+      src.connect(AC.destination);
+      src.start(0);
+    } catch (e) { /* 無視 */ }
   }
 
   function loopNoise(bands, gain) {
@@ -307,9 +328,14 @@ window.Sound = (() => {
     ambientGain.gain.setTargetAtTime(state.paused ? 0.01 : 0.04, now, 0.3);
   }
 
+  for (const ev of ['pointerup', 'touchend', 'click', 'keydown']) {
+    window.addEventListener(ev, init, { capture: true, passive: true });
+  }
+
   return {
     init, update, setMuted,
     get muted() { return muted; },
+    get ready() { return !!AC && AC.state === 'running'; },
     crack, glove, jump, dive, cheer, sigh, horn, launch, boom, fanfare,
   };
 })();
