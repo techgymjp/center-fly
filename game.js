@@ -223,7 +223,7 @@
     Object.assign(state, {
       phase: 'ready', paused: false, index: 0, catches: 0, misses: 0, score: 0,
       streak: 0, bestStreak: 0, tech: { dive: 0, jump: 0, hr: 0, running: 0 },
-      phaseT: 0, overT: 0, ball: null, popups: [], lastResult: null, newRecord: false, navUsed: false,
+      phaseT: 0, overT: 0, ball: null, popups: [], lastResult: null, newRecord: false, navUsed: false, redoUsed: 0,
     });
     startBall();
   }
@@ -311,11 +311,13 @@
     };
   }
 
-  function startBall() {
+  function startBall(replay) {
     state.phase = 'ready';
     state.phaseT = 0;
     state.fielder = newFielder();
-    state.ball = genBall(state.index);
+    // やり直し(リワード広告)のときは同じ打球をもう一度
+    if (!replay) state.ballSpec = JSON.stringify(genBall(state.index));
+    state.ball = JSON.parse(state.ballSpec);
     state.ball.waiting = true;
     pressed.jump = pressed.dive = false;
   }
@@ -532,9 +534,11 @@
   function onLand(b) {
     const d = Math.hypot(b.x, b.y);
     state.misses++;
+    state.redoStreak = state.streak;
     state.streak = 0;
     const hr = d > FENCE;
     state.lastResult = { ok: false, kind: hr ? 'hr' : 'hit' };
+    offerRedo();
     popup(t(hr ? 'miss.hr' : 'miss.hit'), '#ff6b6b', 46);
     Sound.sigh(hr ? 1.3 : 1);
     endFlight();
@@ -618,6 +622,7 @@
     pressed.jump = pressed.dive = false;
 
     state.phaseT += dt;
+    updateRedo(dt);
     const f = state.fielder, b = state.ball;
     const canMove = state.phase === 'flight' || state.phase === 'result';
     updateFielder(f, input, dt, canMove);
@@ -637,7 +642,7 @@
     state.popups = state.popups.filter((p) => p.t < p.life);
 
     if (state.phase === 'ready' && state.phaseT >= 1.3) launch();
-    if (state.phase === 'result' && state.phaseT >= 1.6) {
+    if (state.phase === 'result' && state.phaseT >= 1.6 && !redo.active) {
       state.index++;
       if (state.index >= TOTAL) gameOver();
       else startBall();
@@ -897,20 +902,19 @@
   function drawOver() {
     ctx.fillStyle = 'rgba(8,14,20,0.68)';
     ctx.fillRect(0, 0, W, H);
-    centerText(t('over.title'), 92, 46, '#ffffff', '900');
-    centerText(t('over.catches', { c: state.catches, t: TOTAL }), 160, 46, state.catches === TOTAL ? '#ffe14d' : '#9fe8ff', '900');
-    if (state.catches === TOTAL) centerText(t('over.perfect'), 200, 24, '#ffe14d');
+    // 下の方(y 約 300〜500)は HTML のシェア・もう一度ボタン、さらに下はバナー広告(アプリ)なので上に詰める
+    centerText(t('over.title'), 84, 32, '#ffffff', '900');
+    centerText(t('over.catches', { c: state.catches, t: TOTAL }), 130, 40, state.catches === TOTAL ? '#ffe14d' : '#9fe8ff', '900');
+    if (state.catches === TOTAL) centerText(t('over.perfect'), 160, 18, '#ffe14d');
     const [rank, col] = rankOf(state.catches);
-    centerText(t('over.rank', { r: rank }), 238, 28, col);
-    ctx.font = '17px sans-serif';
+    centerText(t('over.rank', { r: rank }), 190, 22, col);
+    ctx.font = '16px sans-serif';
     ctx.fillStyle = '#e6e6e6';
     ctx.textAlign = 'center';
-    ctx.fillText(t('over.line1', { s: state.score, k: state.bestStreak, nav: navLabel() }), W / 2, 274);
-    ctx.fillText(t('over.line2', { d: state.tech.dive, j: state.tech.jump, h: state.tech.hr, r: state.tech.running }), W / 2, 300);
-    if (state.newRecord) centerText(t('over.new'), 336, 24, '#ff8a65');
-    else if (state.best) centerText(t('over.best', { c: state.best.catches, s: state.best.score }), 336, 18, '#9fe8ff');
-    // この下(y 約 360〜500)は HTML のシェアボタン
-    if (state.overT > 1.0 && !retryBusy && Math.floor(state.time * 2) % 2 === 0) centerText(t(isTouch ? 'over.retry.touch' : 'over.retry.key'), 560, 24);
+    ctx.fillText(t('over.line1', { s: state.score, k: state.bestStreak, nav: navLabel() }), W / 2, 216);
+    ctx.fillText(t('over.line2', { d: state.tech.dive, j: state.tech.jump, h: state.tech.hr, r: state.tech.running }), W / 2, 238);
+    if (state.newRecord) centerText(t('over.new'), 268, 20, '#ff8a65');
+    else if (state.best) centerText(t('over.best', { c: state.best.catches, s: state.best.score }), 268, 17, '#9fe8ff');
   }
 
   // ---------- シェア(結果画面) ----------
@@ -919,7 +923,7 @@
   const shareEl = document.getElementById('share');
   const $id = (id) => document.getElementById(id);
 
-  const navLabel = () => t(state.navUsed ? 'nav.on' : 'nav.off');
+  const navLabel = () => t(state.navUsed ? 'nav.on' : 'nav.off') + (state.redoUsed ? t('nav.redo', { n: state.redoUsed }) : '');
 
   function shareText() {
     const [rank] = rankOf(state.catches);
@@ -934,6 +938,7 @@
     $id('shareX').href = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(text) + '&url=' + encodeURIComponent(SHARE_URL);
     $id('shareLine').href = 'https://line.me/R/share?text=' + encodeURIComponent(text + '\n' + SHARE_URL);
     $id('shareMsg').textContent = t(NATIVE ? 'share.msg.native' : navigator.share ? 'share.msg.image' : 'share.msg.links');
+    $id('retryBtn').textContent = t('over.retryBtn') + (isTouch ? '' : ' (SPACE)');
   }
 
   // 成績カード画像(1200x630)
@@ -1043,6 +1048,7 @@
     if (state.phase === 'over') drawOver();
     updateShareVisibility();
     updateLegalVisibility();
+    updateBanner();
     drawMute();
     drawNavButton();
   }
@@ -1145,6 +1151,61 @@
       if (state.phase === 'title' || state.phase === 'over') plugin('App').exitApp();
       else togglePause();
     });
+  }
+
+  // 結果画面の「もう一度」ボタン
+  $id('retryBtn').addEventListener('click', () => { audio(); if (state.phase === 'over') retry(); });
+
+  // ---------- リワード広告で落球をやり直す(アプリのみ・1 ゲーム 1 回) ----------
+  // 打球を落としたら「広告を見てこの球をやり直す」を出す。見終わると落球を取り消し、同じ打球をもう一度
+  const REDO_WAIT = 6;
+  const redo = { active: false, busy: false, t: 0 };
+  const redoEl = $id('redo');
+  for (const ev of ['pointerdown', 'pointerup']) redoEl.addEventListener(ev, (e) => e.stopPropagation());
+  function offerRedo() {
+    if (!Ads.available || state.redoUsed) return;
+    Object.assign(redo, { active: true, busy: false, t: REDO_WAIT });
+    $id('redoWatch').disabled = false;
+    $id('redoWatch').textContent = t('redo.watch');
+    $id('redoNote').textContent = t('redo.note');
+    redoEl.hidden = false;
+  }
+  function closeRedo() {
+    redo.active = false;
+    redoEl.hidden = true;
+  }
+  function updateRedo(dt) {
+    if (!redo.active || redo.busy || state.paused) return;
+    redo.t -= dt;
+    $id('redoNext').textContent = t('redo.next', { s: Math.max(0, Math.ceil(redo.t)) });
+    if (redo.t <= 0) closeRedo();
+  }
+  $id('redoNext').addEventListener('click', closeRedo);
+  $id('redoWatch').addEventListener('click', async () => {
+    if (!redo.active || redo.busy) return;
+    redo.busy = true;
+    $id('redoWatch').disabled = true;
+    $id('redoWatch').textContent = t('redo.loading');
+    const result = await Ads.showRewarded();
+    if (!redo.active) return;
+    if (result === 'unavailable') {
+      $id('redoNote').textContent = t('redo.fail');
+      setTimeout(closeRedo, 2000);
+      return;
+    }
+    closeRedo();
+    if (result !== 'rewarded') return;
+    // 落球を取り消して、同じ打球をもう一度
+    state.misses--;
+    state.streak = state.redoStreak || 0;
+    state.redoUsed++;
+    state.popups = [];
+    startBall(true);
+  });
+
+  // バナー広告はタイトル画面と結果画面だけ(プレイ中は操作ボタンと重なるので出さない)
+  function updateBanner() {
+    Ads.setBanner((state.phase === 'title' || state.phase === 'over') && !isPortrait());
   }
 
   // タイトル画面の下に、バージョン(アプリ版)・プライバシーポリシー・広告の設定(EU など)を出す

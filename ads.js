@@ -1,14 +1,18 @@
 // Google AdMob 広告（Android アプリのときだけ動く。Web 版では何もしない）
-// 構成は techgymjp/jet-fighter の js/ads.js と同じ。センターフライではインタースティシャルだけを使う
+// 構成は techgymjp/jet-fighter の js/ads.js と同じ。センターフライではリワード・インタースティシャル・バナーを使う
 window.Ads = (() => {
   const UNITS = {
     // Google 公式のテスト用広告ユニット
     test: {
       interstitial: 'ca-app-pub-3940256099942544/1033173712',
+      rewarded: 'ca-app-pub-3940256099942544/5224354917',
+      banner: 'ca-app-pub-3940256099942544/6300978111',
     },
-    // TODO: AdMob で「センターフライ」の広告ユニットを作成したら差し替える(それまではテスト広告のまま)
+    // 本番の広告ユニット(AdMob の「センターフライ」)
     production: {
-      interstitial: 'ca-app-pub-3940256099942544/1033173712',
+      interstitial: 'ca-app-pub-6411535997477460/8044149079',
+      rewarded: 'ca-app-pub-6411535997477460/5417985738',
+      banner: 'ca-app-pub-6411535997477460/2321756947',
     },
   };
   const RETRY_MS = 20000;      // 読み込みに失敗したら少し待って再挑戦する
@@ -26,6 +30,7 @@ window.Ads = (() => {
   // 広告の種類ごとの読み込み状態
   const slots = {
     inter: { loaded: false, pending: null, load: () => AdMob.prepareInterstitial({ adId: ids.interstitial, isTesting: testing }) },
+    reward: { loaded: false, pending: null, load: () => AdMob.prepareRewardVideoAd({ adId: ids.rewarded, isTesting: testing }) },
   };
 
   // 読み込みを始め、読み込めたら true で resolve する Promise を返す（読み込み中なら同じ Promise）
@@ -51,6 +56,7 @@ window.Ads = (() => {
   function finish(kind, result) {
     showing = false;
     Sound.resume();
+    syncBanner();
     const w = waiters[kind];
     waiters[kind] = null;
     if (w) w(result);
@@ -72,9 +78,16 @@ window.Ads = (() => {
     } catch (e) {
       ready = true;
     }
+    let rewarded = false;
     AdMob.addListener('interstitialAdDismissed', () => finish('inter'));
     AdMob.addListener('interstitialAdFailedToShow', () => finish('inter'));
+    AdMob.addListener('onRewardedVideoAdShowed', () => { rewarded = false; });
+    AdMob.addListener('onRewardedVideoAdReward', () => { rewarded = true; });
+    AdMob.addListener('onRewardedVideoAdDismissed', () => finish('reward', rewarded));
+    AdMob.addListener('onRewardedVideoAdFailedToShow', () => finish('reward', false));
     prepare('inter');
+    prepare('reward');
+    syncBanner();
   }
 
   // 全画面広告を表示し、閉じられたら resolve する（読み込めていないときは最大 timeout ミリ秒だけ待ち、だめなら出さずに resolve）
@@ -84,10 +97,60 @@ window.Ads = (() => {
     if (!ready || !(await ensureLoaded('inter', timeout))) return;
     showing = true; slots.inter.loaded = false;
     Sound.suspend();
+    syncBanner();
     return new Promise((resolve) => {
       waiters.inter = () => { prepare('inter'); resolve(); };
       AdMob.showInterstitial().catch(() => finish('inter'));
     });
+  }
+
+  // リワード広告を表示する。結果は 'rewarded'（最後まで見た）/ 'skipped'（途中で閉じた）/ 'unavailable'（読み込めなかった）
+  async function showRewarded() {
+    if (!AdMob || showing) return 'unavailable';
+    await initDone;
+    if (!ready || !(await ensureLoaded('reward', 8000))) return 'unavailable';
+    showing = true; slots.reward.loaded = false;
+    Sound.suspend();
+    syncBanner();
+    return new Promise((resolve) => {
+      waiters.reward = (ok) => { prepare('reward'); resolve(ok ? 'rewarded' : 'skipped'); };
+      AdMob.showRewardVideoAd().catch(() => finish('reward', false));
+    });
+  }
+
+  // ---------- バナー ----------
+  // 操作ボタンと重ならないよう、タイトル画面と結果画面の下中央にだけ出す(プレイ中は隠す)
+  const banner = { want: false, state: 'none', busy: false }; // state: none | shown | hidden
+  function setBanner(want) {
+    if (banner.want === want) return;
+    banner.want = want;
+    syncBanner();
+  }
+  async function syncBanner() {
+    if (!AdMob || !ready || banner.busy) return;
+    const target = banner.want && !showing ? 'shown' : 'hidden';
+    if (target === banner.state || (target === 'hidden' && banner.state === 'none')) return;
+    banner.busy = true;
+    try {
+      if (target === 'shown') {
+        if (banner.state === 'none') {
+          await AdMob.showBanner({ adId: ids.banner, adSize: 'BANNER', position: 'BOTTOM_CENTER', margin: 0, isTesting: testing });
+        } else {
+          await AdMob.resumeBanner();
+        }
+        banner.state = 'shown';
+      } else {
+        await AdMob.hideBanner();
+        banner.state = 'hidden';
+      }
+    } catch (e) {
+      // 読み込めなかったときは次の機会にやり直す
+      if (target === 'shown') banner.state = 'none';
+    }
+    banner.busy = false;
+    // 待っている間に状態が変わっていたら追いかける
+    const again = banner.want && !showing ? 'shown' : 'hidden';
+    if (again !== banner.state && !(again === 'hidden' && banner.state === 'none')) syncBanner();
   }
 
   // 同意した内容をあとから変更するための Google のフォームを開く
@@ -104,6 +167,8 @@ window.Ads = (() => {
     get privacyOptionsRequired() { return privacyRequired; },
     initDone,
     showInterstitial,
+    showRewarded,
+    setBanner,
     showPrivacyOptions,
   };
 })();
