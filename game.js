@@ -923,7 +923,7 @@
   const shareEl = document.getElementById('share');
   const $id = (id) => document.getElementById(id);
 
-  const navLabel = () => t(state.navUsed ? 'nav.on' : 'nav.off') + (state.redoUsed ? t('nav.redo', { n: state.redoUsed }) : '');
+  const navLabel = () => t(state.navUsed ? 'nav.on' : 'nav.off') + (state.redoUsed ? t(state.redoUsed === 1 ? 'nav.redo1' : 'nav.redo', { n: state.redoUsed }) : '');
 
   function shareText() {
     const [rank] = rankOf(state.catches);
@@ -1180,18 +1180,19 @@
     if (show === pauseEl.hidden) pauseEl.hidden = !show;
   }
 
-  // ---------- リワード広告で落球をやり直す(アプリのみ・1 ゲーム 1 回) ----------
+  // ---------- リワード広告で落球をやり直す(アプリのみ・1 ゲーム 5 回まで) ----------
   // 打球を落としたら「広告を見てこの球をやり直す」を出す。見終わると落球を取り消し、同じ打球をもう一度
   const REDO_WAIT = 6;
+  const REDO_MAX = 5; // 1 ゲームでやり直せる回数
   const redo = { active: false, busy: false, t: 0 };
   const redoEl = $id('redo');
   for (const ev of ['pointerdown', 'pointerup']) redoEl.addEventListener(ev, (e) => e.stopPropagation());
   function offerRedo() {
-    if (!Ads.available || state.redoUsed) return;
+    if (!Ads.available || state.redoUsed >= REDO_MAX) return;
     Object.assign(redo, { active: true, busy: false, t: REDO_WAIT });
     $id('redoWatch').disabled = false;
     $id('redoWatch').textContent = t('redo.watch');
-    $id('redoNote').textContent = t('redo.note');
+    $id('redoNote').textContent = t('redo.note', { n: REDO_MAX - state.redoUsed, max: REDO_MAX });
     redoEl.hidden = false;
   }
   function closeRedo() {
