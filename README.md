@@ -93,7 +93,8 @@ GitHub Pages などの静的ホスティングにそのまま置けます。
 
 1. `npm ci` → `npm run build`(`www/` に Web ファイルをコピーし、`ads-config.js` と `build-info.js` を生成)→ `npx cap sync android` → `./gradlew assembleDebug`
 2. 既定ブランチなら、Release `android-latest` の `center-fly.apk` を差し替え(動作確認用・テスト広告)
-   `https://github.com/techgymjp/center-fly/releases/latest/download/center-fly.apk`
+   - リリース画面: `https://github.com/techgymjp/center-fly/releases/tag/android-latest`(QR コード: `docs/apk-qr.png`)
+   - APK 直接: `https://github.com/techgymjp/center-fly/releases/latest/download/center-fly.apk`
 3. GitHub Secrets に署名鍵(`ANDROID_KEYSTORE_BASE64` / `ANDROID_KEYSTORE_PASSWORD` / `ANDROID_KEY_ALIAS` / `ANDROID_KEY_PASSWORD`)があれば、本番広告で署名付き AAB を作り Artifact に上げる
 
 手元で試すとき: `npm install` → `npm run android:sync` → `npm run android:open`(Android Studio が必要)。
