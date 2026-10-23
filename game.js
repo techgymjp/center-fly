@@ -1123,12 +1123,11 @@
   }
 
   // ---------- アプリ(Android)向け ----------
-  // 2 回に 1 回、「もう一度」の前に全画面広告を出す(Android アプリのみ)
-  let retryBusy = false, gameOvers = 0;
+  // 「もう一度」の前に毎回、全画面広告を出す(Android アプリのみ)
+  let retryBusy = false;
   async function retry() {
     if (retryBusy) return;
-    gameOvers++;
-    if (Ads.available && gameOvers % 2 === 0) {
+    if (Ads.available) {
       retryBusy = true;
       await Ads.showInterstitial(3000);
       retryBusy = false;
@@ -1203,9 +1202,10 @@
     startBall(true);
   });
 
-  // バナー広告はタイトル画面と結果画面だけ(プレイ中は操作ボタンと重なるので出さない)
+  // バナー広告はタイトル画面・結果画面・ポーズ画面だけ(プレイ中は操作ボタンと重なるので出さない)
   function updateBanner() {
-    Ads.setBanner((state.phase === 'title' || state.phase === 'over') && !isPortrait());
+    const paused = state.paused && state.phase !== 'title' && state.phase !== 'over';
+    Ads.setBanner((state.phase === 'title' || state.phase === 'over' || paused) && !isPortrait());
   }
 
   // タイトル画面の下に、バージョン(アプリ版)・プライバシーポリシー・広告の設定(EU など)を出す
