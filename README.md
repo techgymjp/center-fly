@@ -1,4 +1,4 @@
-# センターフライ
+# センターフライ (Center Fly)
 
 センターを守るあなたに、ひたすらセンターフライが飛んでくる。
 **100球すべて捕れるか!?** を競うブラウザゲームです。
@@ -8,6 +8,11 @@
 
 `index.html` をブラウザで開くだけで遊べます(Web 版はビルド不要)。Android アプリ版もあります(下記)。3D描画に同梱の three.js(`vendor/three.min.js`, MIT License)を使っています。
 GitHub Pages などの静的ホスティングにそのまま置けます。
+
+## 言語
+
+日本語と英語に対応しています。端末(ブラウザ)の言語が日本語なら日本語、それ以外は英語で表示し、タイトル画面左下のボタンで切り替えられます(設定は保存)。
+文言は `i18n.js` にまとめています(構成は techgymjp/jet-fighter の `js/i18n.js` と同じ)。Android アプリは英語の端末ではアプリ名も「Center Fly」になります。
 
 ## 操作
 
@@ -95,3 +100,14 @@ GitHub Pages などの静的ホスティングにそのまま置けます。
 著作権はテックジム株式会社に帰属します(All rights reserved)。許可なく複製・改変・再配布すること、Web サイトやアプリ(Google Play、App Store など)として公開・販売すること、名前・ロゴ・アイコン・画像を使うことを禁止します。
 テックジムの受講生が学習目的で複製・改変することは許可しますが、アプリストアでの公開・広告の掲載・販売などの商用利用は禁止し、著作権表示を残してください。
 同梱の three.js は MIT License です。詳しくは [LICENSE](LICENSE) を見てください。
+
+## English
+
+**Center Fly** — you play center field, and 100 fly balls are coming your way. Can you catch them all?
+A 3D baseball game viewed from behind the center fielder, looking in toward home plate under the stadium lights.
+
+- Move with the direction ring (or arrow keys / WASD), hold DASH to sprint, JUMP to rob home runs at the wall, DIVE for sinking liners. Catching is automatic.
+- The yellow ring on the grass (NAV) shows where the ball will land. Your result shows whether NAV was on.
+- Every out sets off fireworks and a big cheer.
+- Open `index.html` in a browser to play. An Android app (Capacitor) is also built by GitHub Actions.
+- The game switches to English automatically when your device language is not Japanese; you can also switch on the title screen.

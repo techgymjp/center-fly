@@ -320,7 +320,7 @@ window.Scene3D = (() => {
   }
 
   function updateScoreboard(state) {
-    const key = `${state.phase}|${state.index}|${state.catches}|${state.misses}`;
+    const key = `${state.phase}|${state.index}|${state.catches}|${state.misses}|${I18N.lang}`;
     if (key === scoreboard.key) return;
     scoreboard.key = key;
     const g = scoreboard.canvas.getContext('2d');
@@ -332,12 +332,12 @@ window.Scene3D = (() => {
     g.font = 'bold 36px sans-serif';
     g.fillStyle = '#ffffff';
     const n = Math.min(state.index + 1, 100);
-    g.fillText(`第${n}球`, 140, 118);
+    g.fillText(I18N.t('ready.pitch', { n }), 140, 118, 240);
     g.fillStyle = '#7fe0ff';
-    g.fillText(`捕球 ${state.catches}`, 370, 118);
+    g.fillText(I18N.t('hud.catches', { n: state.catches }), 370, 118, 260);
     g.fillStyle = '#ff8a80';
     g.font = 'bold 28px sans-serif';
-    g.fillText(`落球 ${state.misses}`, 370, 166);
+    g.fillText(I18N.t('hud.misses', { n: state.misses }), 370, 166, 260);
     g.fillStyle = '#b0bec5';
     g.fillText('/ 100', 140, 166);
     scoreboard.tex.needsUpdate = true;

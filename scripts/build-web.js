@@ -8,7 +8,7 @@ fs.rmSync(out, { recursive: true, force: true });
 fs.mkdirSync(out);
 for (const item of [
   'index.html', 'style.css', 'manifest.json', 'icon.svg',
-  'game.js', 'scene3d.js', 'sound.js', 'ads.js', 'vendor',
+  'game.js', 'scene3d.js', 'sound.js', 'ads.js', 'i18n.js', 'vendor',
 ]) {
   const src = path.join(root, item);
   if (fs.existsSync(src)) fs.cpSync(src, path.join(out, item), { recursive: true });

@@ -18,6 +18,7 @@
   const JUMP_T = 0.6, JUMP_H = 1.5;
   const DIVE_T = 0.4, DIVE_V = 10.5, DOWN_T = 0.9;
   const DT = 1 / 120;
+  const t = (k, v) => I18N.t(k, v);
 
   // Android アプリ（Capacitor）で動いているか。Web 版では Capacitor がないので何もしない
   const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
@@ -59,9 +60,9 @@
 
   const RING = { x: 125, y: 510, r: 95, dead: 14 };
   const BTN = {
-    dash: { x: 860, y: 548, r: 54, label: 'ダッシュ', key: 'Shift' },
-    jump: { x: 740, y: 590, r: 38, label: 'ジャンプ', key: 'Z' },
-    dive: { x: 790, y: 470, r: 38, label: 'ダイブ', key: 'X' },
+    dash: { x: 860, y: 548, r: 54, label: 'btn.dash', key: 'Shift' },
+    jump: { x: 740, y: 590, r: 38, label: 'btn.jump', key: 'Z' },
+    dive: { x: 790, y: 470, r: 38, label: 'btn.dive', key: 'X' },
   };
   const MUTE = { x: 596, y: 36, r: 20 };
   const NAVBTN = { x: 660, y: 36, w: 76, h: 30 };
@@ -505,15 +506,15 @@
     const ballDist = Math.hypot(b.x, b.y);
     let label, pts, kind;
     if (f.mode === 'jump' && b.z > WALL_H && ballDist > FENCE - 1.5) {
-      label = 'ホームランキャッチ!!'; pts = 500; kind = 'hr'; state.tech.hr++;
+      label = t('catch.hr'); pts = 500; kind = 'hr'; state.tech.hr++;
     } else if (f.mode === 'jump') {
-      label = 'ジャンピングキャッチ!'; pts = 250; kind = 'jump'; state.tech.jump++;
+      label = t('catch.jump'); pts = 250; kind = 'jump'; state.tech.jump++;
     } else if (f.mode === 'dive' || f.mode === 'down') {
-      label = 'ダイビングキャッチ!!'; pts = 300; kind = 'dive'; state.tech.dive++;
+      label = t('catch.dive'); pts = 300; kind = 'dive'; state.tech.dive++;
     } else if (speed > 7.0) {
-      label = 'ランニングキャッチ!'; pts = 150; kind = 'running'; state.tech.running++;
+      label = t('catch.running'); pts = 150; kind = 'running'; state.tech.running++;
     } else {
-      label = 'キャッチ'; pts = 100; kind = 'normal';
+      label = t('catch.normal'); pts = 100; kind = 'normal';
     }
     state.streak++;
     state.bestStreak = Math.max(state.bestStreak, state.streak);
@@ -534,7 +535,7 @@
     state.streak = 0;
     const hr = d > FENCE;
     state.lastResult = { ok: false, kind: hr ? 'hr' : 'hit' };
-    popup(hr ? 'ホームラン…' : 'ヒット…', '#ff6b6b', 46);
+    popup(t(hr ? 'miss.hr' : 'miss.hit'), '#ff6b6b', 46);
     Sound.sigh(hr ? 1.3 : 1);
     endFlight();
   }
@@ -549,7 +550,7 @@
     let n = kind === 'hr' ? 7 : great ? 5 : 3;
     if (milestone) {
       n += 3;
-      popup(`${state.streak} 連続アウト!`, '#ff8a65', 34, 0.5);
+      popup(t('streak', { n: state.streak }), '#ff8a65', 34, 0.5);
     }
     fireworks(n, great);
   }
@@ -676,7 +677,7 @@
       ctx.beginPath();
       ctx.moveTo(ax, H - 8); ctx.lineTo(ax - 14, H - 30); ctx.lineTo(ax + 14, H - 30);
       ctx.closePath(); ctx.fill();
-      ctx.fillText('頭上を越える!', ax, H - 36);
+      ctx.fillText(t('ind.over'), ax, H - 36);
     } else {
       const ax = Math.max(20, Math.min(W - 20, p.x));
       const ay = Math.max(20, Math.min(H - 20, p.y));
@@ -739,14 +740,16 @@
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'left';
     ctx.font = 'bold 22px sans-serif';
-    ctx.fillText(`第 ${Math.min(state.index + 1, TOTAL)} 球 / ${TOTAL}`, 24, 40);
+    ctx.fillText(t('hud.pitch', { n: Math.min(state.index + 1, TOTAL), t: TOTAL }), 24, 40);
     ctx.font = 'bold 16px sans-serif';
-    ctx.fillStyle = '#9fe8ff';
-    ctx.fillText(`捕球 ${state.catches}`, 24, 64);
-    ctx.fillStyle = '#ff8b8b';
-    ctx.fillText(`落球 ${state.misses}`, 110, 64);
-    ctx.fillStyle = '#ffe14d';
-    ctx.fillText(`連続 ${state.streak}`, 190, 64);
+    // 捕球・落球・連続を横に並べる(言語で文字幅が変わるので測って詰める)
+    let hx = 24;
+    for (const [key, n, col] of [['hud.catches', state.catches, '#9fe8ff'], ['hud.misses', state.misses, '#ff8b8b'], ['hud.streak', state.streak, '#ffe14d']]) {
+      const label = t(key, { n });
+      ctx.fillStyle = col;
+      ctx.fillText(label, hx, 64);
+      hx += Math.max(72, ctx.measureText(label).width + 14);
+    }
     ctx.fillStyle = '#ffffff';
     ctx.fillText(`SCORE ${state.score}`, 24, 86);
 
@@ -759,19 +762,23 @@
     ctx.fillRect(24, 94, 226 * st, 8);
     ctx.font = '10px sans-serif';
     ctx.fillStyle = '#ddd';
-    ctx.fillText('ダッシュ', 200, 90);
+    ctx.textAlign = 'right';
+    ctx.fillText(t('hud.dash'), 250, 90);
+    ctx.textAlign = 'left';
 
     // 風
     const b = state.ball;
     if (b && b.wind) {
-      ctx.fillStyle = 'rgba(0,0,0,0.55)';
-      ctx.fillRect(272, 12, 128, 34);
-      ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 16px sans-serif';
-      const strong = Math.abs(b.wind) > 1.5 ? '強' : '弱';
-      ctx.fillText(`風 ${b.wind < 0 ? '←' : '→'} ${strong}`, 284, 35);
+      const strong = t(Math.abs(b.wind) > 1.5 ? 'hud.windStrong' : 'hud.windWeak');
+      const label = t('hud.wind', { d: b.wind < 0 ? '←' : '→', s: strong });
+      const tw = ctx.measureText(label).width;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(272, 12, Math.max(128, tw + 64), 34);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText(label, 284, 35);
       // 吹き流し
-      const fxp = 372, fyp = 29;
+      const fxp = Math.max(372, 284 + tw + 28), fyp = 29;
       ctx.strokeStyle = '#ddd'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(fxp, fyp - 10); ctx.lineTo(fxp, fyp + 10); ctx.stroke();
       ctx.fillStyle = '#ff7043';
@@ -807,8 +814,8 @@
     ctx.fillStyle = 'rgba(255,255,255,0.85)';
     ctx.font = 'bold 12px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('前進', RING.x, RING.y - RING.r - 6);
-    ctx.fillText('バック', RING.x, RING.y + RING.r + 15);
+    ctx.fillText(t('ring.fwd'), RING.x, RING.y - RING.r - 6);
+    ctx.fillText(t('ring.back'), RING.x, RING.y + RING.r + 15);
     // ノブ
     const kx = RING.x + mx * RING.r * 0.6, ky = RING.y - my * RING.r * 0.6;
     ctx.fillStyle = mag > 0.1 ? '#ffe14d' : 'rgba(255,255,255,0.6)';
@@ -824,7 +831,7 @@
       ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 2; ctx.stroke();
       ctx.fillStyle = on ? '#222' : '#fff';
       ctx.font = `bold ${name === 'dash' ? 16 : 13}px sans-serif`;
-      ctx.fillText(b.label, b.x, b.y + 3);
+      ctx.fillText(t(b.label), b.x, b.y + 3);
       ctx.font = '10px sans-serif';
       if (!isTouch) ctx.fillText(b.key, b.x, b.y + 17);
     }
@@ -866,58 +873,44 @@
   function drawTitle() {
     ctx.fillStyle = 'rgba(8,14,20,0.55)';
     ctx.fillRect(0, 0, W, H);
-    centerText('センターフライ', 150, 76, '#ffe14d', '900');
-    centerText('100球のフライ、全部捕れるか!?', 205, 26);
+    centerText(t('title.name'), 150, 76, '#ffe14d', '900');
+    centerText(t('title.sub'), 205, 26);
     ctx.font = '17px sans-serif';
     ctx.fillStyle = '#e6e6e6';
     // タッチ操作(アプリ・スマホ)ではキー名ではなくボタン名で案内する
-    const lines = isTouch ? [
-      '移動 : 左下の方角リングをタッチ(16方位・中心から離すほど速い)',
-      'ダッシュ : ダッシュボタンを押している間(スタミナ消費)',
-      'ジャンプ : ジャンプボタン — フェンス際の打球は「ホームランキャッチ」',
-      'ダイブ : ダイブボタン — 前に落ちるライナーは飛び込んで捕れ!',
-      '捕球は自動。芝に落ちるボールの「影」で落下点を読もう。',
-      '黄色い輪が着地点ナビ(上の「ナビ」ボタンでオン/オフ)',
-    ] : [
-      '移動 : 方角リングをタッチ / 矢印キー・WASD・テンキー(8方向)',
-      'ダッシュ : ダッシュボタン長押し / Shift・Space(スタミナ消費)',
-      'ジャンプ : Z  — フェンス際の打球はジャンプで「ホームランキャッチ」',
-      'ダイブ : X  — 前に落ちるライナーは飛び込んで捕れ!',
-      '捕球は自動。芝に落ちるボールの「影」で落下点を読もう。',
-      '黄色い輪が着地点ナビ(N キーでオン/オフ)。M : 音のオン/オフ',
-    ];
+    const lines = [1, 2, 3, 4, 5, 6].map((i) => t(`help.${isTouch ? 'touch' : 'key'}.${i}`));
     lines.forEach((l, i) => ctx.fillText(l, W / 2, 262 + i * 30));
-    if (state.best) centerText(`ベスト: ${state.best.catches} / ${TOTAL} 球  (SCORE ${state.best.score})`, 470, 20, '#9fe8ff');
-    if (Math.floor(state.time * 2) % 2 === 0) centerText(isTouch ? 'タップでプレイボール' : 'SPACE / タップでプレイボール', 540, 30, '#ffffff');
-    if (!NATIVE) centerText('音が鳴ります(M キー / 上のボタンで消音)。iPhone はマナーモードを解除してください', 590, 15, '#cfd8dc', 'normal');
+    if (state.best) centerText(t('title.best', { c: state.best.catches, t: TOTAL, s: state.best.score }), 470, 20, '#9fe8ff');
+    if (Math.floor(state.time * 2) % 2 === 0) centerText(t(isTouch ? 'title.start.touch' : 'title.start.key'), 540, 30, '#ffffff');
+    if (!NATIVE) centerText(t('title.sound'), 590, 15, '#cfd8dc', 'normal');
   }
 
   function rankOf(c) {
-    if (c >= 100) return ['伝説の名手', '#ffe14d'];
-    if (c >= 95) return ['ゴールデングラブ', '#ffd54f'];
-    if (c >= 85) return ['不動のレギュラー', '#9fe8ff'];
-    if (c >= 70) return ['守備固め要員', '#b9f6ca'];
-    if (c >= 50) return ['二軍', '#e0e0e0'];
-    return ['草野球', '#bdbdbd'];
+    if (c >= 100) return [t('rank.5'), '#ffe14d'];
+    if (c >= 95) return [t('rank.4'), '#ffd54f'];
+    if (c >= 85) return [t('rank.3'), '#9fe8ff'];
+    if (c >= 70) return [t('rank.2'), '#b9f6ca'];
+    if (c >= 50) return [t('rank.1'), '#e0e0e0'];
+    return [t('rank.0'), '#bdbdbd'];
   }
 
   function drawOver() {
     ctx.fillStyle = 'rgba(8,14,20,0.68)';
     ctx.fillRect(0, 0, W, H);
-    centerText('ゲームセット', 92, 46, '#ffffff', '900');
-    centerText(`${state.catches} / ${TOTAL} 球 捕球`, 160, 46, state.catches === TOTAL ? '#ffe14d' : '#9fe8ff', '900');
-    if (state.catches === TOTAL) centerText('★ パーフェクト!! 全球捕球 ★', 200, 24, '#ffe14d');
+    centerText(t('over.title'), 92, 46, '#ffffff', '900');
+    centerText(t('over.catches', { c: state.catches, t: TOTAL }), 160, 46, state.catches === TOTAL ? '#ffe14d' : '#9fe8ff', '900');
+    if (state.catches === TOTAL) centerText(t('over.perfect'), 200, 24, '#ffe14d');
     const [rank, col] = rankOf(state.catches);
-    centerText(`称号: ${rank}`, 238, 28, col);
+    centerText(t('over.rank', { r: rank }), 238, 28, col);
     ctx.font = '17px sans-serif';
     ctx.fillStyle = '#e6e6e6';
     ctx.textAlign = 'center';
-    ctx.fillText(`SCORE ${state.score}   最大連続捕球 ${state.bestStreak}   ${state.navUsed ? 'ナビあり' : 'ナビなし'}`, W / 2, 274);
-    ctx.fillText(`ダイビング ${state.tech.dive}  ジャンピング ${state.tech.jump}  ホームランキャッチ ${state.tech.hr}  ランニング ${state.tech.running}`, W / 2, 300);
-    if (state.newRecord) centerText('NEW RECORD!', 336, 24, '#ff8a65');
-    else if (state.best) centerText(`ベスト: ${state.best.catches} 球 (SCORE ${state.best.score})`, 336, 18, '#9fe8ff');
+    ctx.fillText(t('over.line1', { s: state.score, k: state.bestStreak, nav: navLabel() }), W / 2, 274);
+    ctx.fillText(t('over.line2', { d: state.tech.dive, j: state.tech.jump, h: state.tech.hr, r: state.tech.running }), W / 2, 300);
+    if (state.newRecord) centerText(t('over.new'), 336, 24, '#ff8a65');
+    else if (state.best) centerText(t('over.best', { c: state.best.catches, s: state.best.score }), 336, 18, '#9fe8ff');
     // この下(y 約 360〜500)は HTML のシェアボタン
-    if (state.overT > 1.0 && !retryBusy && Math.floor(state.time * 2) % 2 === 0) centerText(isTouch ? 'ここをタップでもう一度' : 'SPACE / ここをタップでもう一度', 560, 24);
+    if (state.overT > 1.0 && !retryBusy && Math.floor(state.time * 2) % 2 === 0) centerText(t(isTouch ? 'over.retry.touch' : 'over.retry.key'), 560, 24);
   }
 
   // ---------- シェア(結果画面) ----------
@@ -926,20 +919,21 @@
   const shareEl = document.getElementById('share');
   const $id = (id) => document.getElementById(id);
 
+  const navLabel = () => t(state.navUsed ? 'nav.on' : 'nav.off');
+
   function shareText() {
     const [rank] = rankOf(state.catches);
-    const perfect = state.catches === TOTAL ? '【パーフェクト!】' : '';
-    return `⚾センターフライで${state.catches}/${TOTAL}球捕球!${perfect}\n` +
-      `称号:${rank} SCORE ${state.score}(${state.navUsed ? 'ナビあり' : 'ナビなし'})\n` +
-      `ダイビング${state.tech.dive}・ホームランキャッチ${state.tech.hr}・最大${state.bestStreak}連続\n` +
-      '#センターフライ #ClaudeCode';
+    return t('share.text', {
+      c: state.catches, t: TOTAL, p: state.catches === TOTAL ? t('share.perfect') : '', r: rank,
+      s: state.score, nav: navLabel(), d: state.tech.dive, h: state.tech.hr, k: state.bestStreak,
+    });
   }
 
   function prepareShare() {
     const text = shareText();
     $id('shareX').href = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(text) + '&url=' + encodeURIComponent(SHARE_URL);
     $id('shareLine').href = 'https://line.me/R/share?text=' + encodeURIComponent(text + '\n' + SHARE_URL);
-    $id('shareMsg').textContent = NATIVE ? '共有メニューからシェアできます' : navigator.share ? '成績画像つきでシェアできます' : 'X・LINE・コピーからシェアしてください';
+    $id('shareMsg').textContent = t(NATIVE ? 'share.msg.native' : navigator.share ? 'share.msg.image' : 'share.msg.links');
   }
 
   // 成績カード画像(1200x630)
@@ -961,16 +955,16 @@
     g.fillStyle = '#3a8a36'; g.fillRect(0, 560, 1200, 70);
     g.textAlign = 'center'; g.textBaseline = 'middle';
     const font = (w, sz) => `${w} ${sz}px "Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif`;
-    g.fillStyle = '#9fd8ff'; g.font = font(800, 36); g.fillText(`センターフライ(${state.navUsed ? 'ナビあり' : 'ナビなし'})`, 600, 70);
+    g.fillStyle = '#9fd8ff'; g.font = font(800, 36); g.fillText(t('card.head', { nav: navLabel() }), 600, 70);
     const gold = g.createLinearGradient(0, 120, 0, 280);
     gold.addColorStop(0, '#fff6c4'); gold.addColorStop(0.5, '#ffd000'); gold.addColorStop(1, '#ff8a00');
-    g.fillStyle = gold; g.font = font(900, 140); g.fillText(`${state.catches}/${TOTAL}球`, 600, 200);
+    g.fillStyle = gold; g.font = font(900, 140); g.fillText(t('card.catches', { c: state.catches, t: TOTAL }), 600, 200, 1100);
     const [rank] = rankOf(state.catches);
-    g.fillStyle = '#ff9d3c'; g.font = font(900, 52); g.fillText(`称号:${rank}`, 600, 330);
+    g.fillStyle = '#ff9d3c'; g.font = font(900, 52); g.fillText(t('card.rank', { r: rank }), 600, 330, 1100);
     g.fillStyle = '#ffffff'; g.font = font(800, 40);
-    g.fillText(`SCORE ${state.score} ・ 最大${state.bestStreak}連続アウト`, 600, 415);
-    g.fillText(`ダイビング${state.tech.dive} ジャンピング${state.tech.jump} HRキャッチ${state.tech.hr}`, 600, 485);
-    g.fillStyle = '#eef6e8'; g.font = font(700, 28); g.fillText('#センターフライ  #ClaudeCode', 600, 595);
+    g.fillText(t('card.line1', { s: state.score, k: state.bestStreak }), 600, 415, 1100);
+    g.fillText(t('card.line2', { d: state.tech.dive, j: state.tech.jump, h: state.tech.hr }), 600, 485, 1100);
+    g.fillStyle = '#eef6e8'; g.font = font(700, 28); g.fillText(t('card.tags'), 600, 595);
     return new Promise((res) => c.toBlob(res, 'image/png'));
   }
 
@@ -979,14 +973,14 @@
     // アプリでは Android の共有メニューを出す
     const nativeShare = plugin('Share');
     if (nativeShare) {
-      try { await nativeShare.share({ title: 'センターフライ', text, url: SHARE_URL, dialogTitle: '結果をシェア' }); } catch (e) { /* キャンセル */ }
+      try { await nativeShare.share({ title: t('share.title'), text, url: SHARE_URL, dialogTitle: t('share.dialog') }); } catch (e) { /* キャンセル */ }
       return;
     }
     if (navigator.share) {
       try {
         const blob = await makeShareImage();
         const file = blob && new File([blob], 'center-fly-result.png', { type: 'image/png' });
-        const data = { title: 'センターフライ', text: text + '\n' + SHARE_URL };
+        const data = { title: t('share.title'), text: text + '\n' + SHARE_URL };
         if (file && navigator.canShare && navigator.canShare({ files: [file] })) data.files = [file];
         await navigator.share(data);
         return;
@@ -1008,7 +1002,7 @@
         ta.select(); ok = document.execCommand('copy'); ta.remove();
       } catch (e) { /* 非対応 */ }
     }
-    $id('shareMsg').textContent = ok ? '結果をコピーしました!SNSに貼り付けてください' : 'コピーできませんでした。X・LINEボタンを使ってください';
+    $id('shareMsg').textContent = t(ok ? 'share.copied' : 'share.copyFail');
   }
 
   $id('shareBtn').addEventListener('click', () => { audio(); shareResult(); });
@@ -1036,13 +1030,13 @@
       drawControls();
       drawPopups();
       if (state.phase === 'ready') {
-        centerText(`第 ${state.index + 1} 球`, 250, 44, '#ffffff', '900');
-        if (b && b.wind) centerText(`風が ${b.wind < 0 ? 'レフト' : 'ライト'}方向に吹いている`, 292, 20, '#ffcc80');
+        centerText(t('ready.pitch', { n: state.index + 1 }), 250, 44, '#ffffff', '900');
+        if (b && b.wind) centerText(t('ready.wind', { d: t(b.wind < 0 ? 'ready.left' : 'ready.right') }), 292, 20, '#ffcc80');
       }
       if (state.paused && !isPortrait()) {
         ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, W, H);
         centerText('PAUSE', H / 2, 56);
-        centerText('P / Esc / タップで再開', H / 2 + 44, 20);
+        centerText(t('pause.resume'), H / 2 + 44, 20);
       }
     }
     if (state.phase === 'title') drawTitle();
@@ -1064,7 +1058,7 @@
     ctx.fillStyle = state.nav ? '#222' : '#fff';
     ctx.font = 'bold 13px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(`ナビ ${state.nav ? 'ON' : 'OFF'}`, x, y + 5);
+    ctx.fillText(t('nav.btn', { s: state.nav ? 'ON' : 'OFF' }), x, y + 5);
     ctx.restore();
   }
 
@@ -1076,8 +1070,8 @@
     if (rem < 0) return;
     const d = Math.hypot(n.x - f.x, n.y - f.y);
     let hint = null;
-    if (n.jump && d < 3 && rem < 1.2) hint = 'ジャンプ!';
-    else if (!n.jump && rem < 0.9 && d - CATCH_R > DASH * rem + 0.2 && d - 2.5 <= DASH * rem + 0.6) hint = 'ダイブ!';
+    if (n.jump && d < 3 && rem < 1.2) hint = t('hint.jump');
+    else if (!n.jump && rem < 0.9 && d - CATCH_R > DASH * rem + 0.2 && d - 2.5 <= DASH * rem + 0.6) hint = t('hint.dive');
     if (!hint) return;
     const p = Scene3D.project(n.x, n.y, 2.5);
     if (p.behind) return;
@@ -1103,7 +1097,7 @@
       ctx.fillStyle = '#ffe14d';
       ctx.font = 'bold 13px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText('音が出ないときはタップ', x, y + 43);
+      ctx.fillText(t('sound.tap'), x, y + 43);
     }
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
@@ -1159,9 +1153,16 @@
   Ads.initDone.then(() => { if (Ads.privacyOptionsRequired) document.getElementById('adPrivacy').hidden = false; });
   document.getElementById('adPrivacyLink').addEventListener('click', (e) => { e.preventDefault(); Ads.showPrivacyOptions(); });
   for (const ev of ['pointerdown', 'pointerup']) legalEl.addEventListener(ev, (e) => e.stopPropagation());
+  // タイトル画面の言語切り替え
+  const langEl = document.getElementById('langSel');
+  document.querySelectorAll('[data-lang]').forEach((el) => el.addEventListener('click', () => I18N.setLang(el.dataset.lang)));
+  for (const ev of ['pointerdown', 'pointerup']) langEl.addEventListener(ev, (e) => e.stopPropagation());
+  I18N.onChange(() => { if (!shareEl.hidden) prepareShare(); });
+  I18N.apply();
+
   function updateLegalVisibility() {
     const show = state.phase === 'title';
-    if (show === legalEl.hidden) legalEl.hidden = !show;
+    if (show === legalEl.hidden) { legalEl.hidden = !show; langEl.hidden = !show; }
   }
 
   // ---------- メインループ ----------

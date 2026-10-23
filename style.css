@@ -171,3 +171,36 @@ html, body {
   margin-right: 10px;
   opacity: 0.8;
 }
+
+/* タイトル画面の言語切り替え */
+#langSel {
+  position: absolute;
+  left: 12px;
+  bottom: 8px;
+  z-index: 2;
+  display: flex;
+  gap: 6px;
+  font-family: sans-serif;
+}
+
+#langSel[hidden] {
+  display: none;
+}
+
+#langSel .langBtn {
+  font: inherit;
+  font-size: 13px;
+  padding: 5px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  cursor: pointer;
+}
+
+#langSel .langBtn.on {
+  background: rgba(255, 225, 77, 0.9);
+  border-color: #ffe14d;
+  color: #222;
+  font-weight: bold;
+}

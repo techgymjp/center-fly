@@ -14,29 +14,34 @@
 <body>
 <div id="rotate">
   <div class="phone"></div>
-  <p>スマホを横向きにしてください</p>
-  <small>センターフライは横画面で遊ぶゲームです</small>
+  <p data-i18n="rotate.msg">スマホを横向きにしてください</p>
+  <small data-i18n="rotate.sub">センターフライは横画面で遊ぶゲームです</small>
 </div>
 <div id="wrap">
   <div id="stage">
     <canvas id="view"></canvas>
     <canvas id="game" width="960" height="640"></canvas>
+    <div id="langSel" hidden>
+      <button class="langBtn" type="button" data-lang="ja">日本語</button>
+      <button class="langBtn" type="button" data-lang="en">English</button>
+    </div>
     <div id="legal" hidden>
       <span id="buildInfo"></span>
-      <a href="https://techgym.jp/privacy-policy/" target="_blank" rel="noopener">プライバシーポリシー</a>
-      <span id="adPrivacy" hidden>|<a href="#" id="adPrivacyLink">広告の設定</a></span>
+      <a href="https://techgym.jp/privacy-policy/" data-i18n-href="url.privacy" data-i18n="legal.privacy" target="_blank" rel="noopener">プライバシーポリシー</a>
+      <span id="adPrivacy" hidden>|<a href="#" id="adPrivacyLink" data-i18n="legal.adSettings">広告の設定</a></span>
     </div>
     <div id="share" hidden>
-      <button id="shareBtn" class="sbtn main" type="button">📤 結果をシェア<small id="shareMsg">成績画像つきでシェアできます</small></button>
+      <button id="shareBtn" class="sbtn main" type="button"><span data-i18n="share.btn">📤 結果をシェア</span><small id="shareMsg">成績画像つきでシェアできます</small></button>
       <div class="row">
-        <a id="shareX" class="sbtn" target="_blank" rel="noopener">𝕏 ポスト</a>
+        <a id="shareX" class="sbtn" target="_blank" rel="noopener" data-i18n="share.post">𝕏 ポスト</a>
         <a id="shareLine" class="sbtn" target="_blank" rel="noopener">LINE</a>
-        <button id="shareCopy" class="sbtn" type="button">コピー</button>
+        <button id="shareCopy" class="sbtn" type="button" data-i18n="share.copy">コピー</button>
       </div>
     </div>
   </div>
 </div>
 <script src="vendor/three.min.js"></script>
+<script src="i18n.js"></script>
 <script src="sound.js"></script>
 <script src="build-info.js"></script>
 <script src="ads-config.js"></script>
