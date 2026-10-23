@@ -205,7 +205,8 @@ html, body {
   font-weight: bold;
 }
 
-#share .sbtn.retry {
+#share .sbtn.retry,
+#pauseMenu .sbtn.retry {
   background: linear-gradient(#ffe36b, #ffb300);
   color: #1b1200;
   font-weight: 900;
@@ -263,4 +264,34 @@ html, body {
 
 #redo .sbtn:disabled {
   opacity: 0.6;
+}
+
+/* ポーズ画面のボタン */
+#pauseMenu {
+  position: absolute;
+  left: 50%;
+  top: 44%;
+  transform: translateX(-50%);
+  width: min(300px, 50%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 3;
+  font-family: sans-serif;
+}
+
+#pauseMenu[hidden] {
+  display: none;
+}
+
+#pauseMenu .sbtn {
+  border: 0;
+  border-radius: 10px;
+  padding: 11px 12px;
+  font: inherit;
+  font-weight: 900;
+  font-size: clamp(14px, 3vh, 18px);
+  cursor: pointer;
+  background: #dfe7f7;
+  color: #1b2440;
 }

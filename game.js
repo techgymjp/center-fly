@@ -129,7 +129,7 @@
       pointers.set(e.pointerId, 'none');
       return;
     }
-    if (state.paused) { togglePause(); pointers.set(e.pointerId, 'none'); return; }
+    if (state.paused) { pointers.set(e.pointerId, 'none'); return; } // ポーズ中は「再開」ボタンで戻る
     if (Math.hypot(p.x - RING.x, p.y - RING.y) <= RING.r + 30) {
       pointers.set(e.pointerId, 'ring');
       ringInput.active = true;
@@ -1034,14 +1034,14 @@
       drawHUD();
       drawControls();
       drawPopups();
-      if (state.phase === 'ready') {
+      if (state.phase === 'ready' && !state.paused) {
         centerText(t('ready.pitch', { n: state.index + 1 }), 250, 44, '#ffffff', '900');
         if (b && b.wind) centerText(t('ready.wind', { d: t(b.wind < 0 ? 'ready.left' : 'ready.right') }), 292, 20, '#ffcc80');
       }
       if (state.paused && !isPortrait()) {
         ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(0, 0, W, H);
-        centerText('PAUSE', H / 2, 56);
-        centerText(t('pause.resume'), H / 2 + 44, 20);
+        centerText('PAUSE', H * 0.3, 56);
+        if (!isTouch) centerText(t('pause.resume'), H * 0.3 + 40, 18);
       }
     }
     if (state.phase === 'title') drawTitle();
@@ -1049,6 +1049,7 @@
     updateShareVisibility();
     updateLegalVisibility();
     updateBanner();
+    updatePauseMenu();
     drawMute();
     drawNavButton();
   }
@@ -1126,7 +1127,7 @@
   // 「もう一度」の前に毎回、全画面広告を出す(Android アプリのみ)
   let retryBusy = false;
   async function retry() {
-    if (retryBusy) return;
+    if (retryBusy || titleBusy) return;
     if (Ads.available) {
       retryBusy = true;
       await Ads.showInterstitial(3000);
@@ -1154,6 +1155,30 @@
 
   // 結果画面の「もう一度」ボタン
   $id('retryBtn').addEventListener('click', () => { audio(); if (state.phase === 'over') retry(); });
+
+  // ---------- タイトルへ戻る(結果画面・ポーズ画面) ----------
+  // 戻る前に毎回、全画面広告を出す(Android アプリのみ)
+  let titleBusy = false;
+  async function goTitle() {
+    if (titleBusy || retryBusy) return;
+    titleBusy = true;
+    pauseEl.hidden = true;
+    if (Ads.available) await Ads.showInterstitial(3000);
+    titleBusy = false;
+    closeRedo();
+    Object.assign(state, { phase: 'title', paused: false, ball: null, popups: [], fielder: newFielder() });
+  }
+  $id('titleBtn').addEventListener('click', () => { audio(); if (state.phase === 'over') goTitle(); });
+
+  // ポーズ画面のボタン(再開 / タイトルへ)
+  const pauseEl = $id('pauseMenu');
+  for (const ev of ['pointerdown', 'pointerup']) pauseEl.addEventListener(ev, (e) => e.stopPropagation());
+  $id('pauseResume').addEventListener('click', () => { audio(); if (state.paused) togglePause(); });
+  $id('pauseTitle').addEventListener('click', () => { audio(); if (state.paused) goTitle(); });
+  function updatePauseMenu() {
+    const show = state.paused && !isPortrait() && !titleBusy && state.phase !== 'title' && state.phase !== 'over';
+    if (show === pauseEl.hidden) pauseEl.hidden = !show;
+  }
 
   // ---------- リワード広告で落球をやり直す(アプリのみ・1 ゲーム 1 回) ----------
   // 打球を落としたら「広告を見てこの球をやり直す」を出す。見終わると落球を取り消し、同じ打球をもう一度
