@@ -1,0 +1,49 @@
+Center Fly - English source text for machine translation (Google Play store listing)
+
+This version uses short, plain sentences without idioms or slang, so that automatic translation
+into other languages stays accurate. Keep the game name "Center Fly" untranslated.
+
+[App name] (max 30 characters)
+Center Fly: 100 Fly Balls
+
+[Short description] (max 80 characters)
+You play center field. Catch 100 fly balls by running, diving and jumping!
+
+[Full description] (max 4000 characters)
+You are the center fielder in a baseball stadium at night. The batter hits 100 fly balls to center field. Can you catch all of them?
+
+■ HOW TO PLAY
+• Watch the ball after the batter hits it. Find out where it will land.
+• Run to the place where the ball will land.
+• Some balls fly over your head. Start running back early.
+• Some balls drop in front of you. Dive forward to catch them.
+• Some balls go over the fence. Jump at the fence to catch them and stop the home run.
+• In later rounds, the wind moves the ball to the left or right.
+
+■ 3D VIEW FROM BEHIND THE PLAYER
+• You see the stadium from behind the center fielder.
+• You can see the batter, the pitcher, the crowd and the stadium lights.
+• The shadow of the ball on the grass shows where the ball is.
+• A small map shows the direction of the ball.
+
+■ CHEERS AND FIREWORKS
+• The crowd plays trumpets and drums.
+• The crowd gets louder when the ball goes high.
+• Fireworks go up every time you catch the ball.
+• You hear an air horn when you make a diving catch or a jumping catch.
+• You get more fireworks after every 10 catches in a row.
+• If you catch all 100 balls, you see a big fireworks show.
+
+■ EASY CONTROLS
+• Touch the direction ring to move.
+• Use the buttons to run fast, jump and dive.
+• The player catches the ball automatically.
+• You can turn on the landing guide. A yellow ring on the grass shows where the ball will land.
+
+■ FEATURES
+• Get a rank based on how many balls you catch.
+• Share your score and rank with your friends.
+• Play without an internet connection. Ads and sharing need a connection.
+• English and Japanese are available in the game.
+
+Play ball! Can you catch all 100 fly balls?
