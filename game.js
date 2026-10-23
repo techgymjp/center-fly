@@ -19,6 +19,10 @@
   const DIVE_T = 0.4, DIVE_V = 10.5, DOWN_T = 0.9;
   const DT = 1 / 120;
 
+  // Android アプリ（Capacitor）で動いているか。Web 版では Capacitor がないので何もしない
+  const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  const plugin = (name) => (NATIVE && window.Capacitor.Plugins ? window.Capacitor.Plugins[name] : null);
+
   const canvas = document.getElementById('game');
   const ctx = canvas.getContext('2d');
 
@@ -575,7 +579,7 @@
 
   // スタートのタップで全画面+横向き固定を試す(Android Chrome など。iPhone は非対応なので何もしない)
   function goLandscape() {
-    if (!isTouch) return;
+    if (!isTouch || NATIVE) return; // アプリは AndroidManifest で横画面に固定している
     const el = document.documentElement;
     const lock = () => {
       if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {});
@@ -601,7 +605,7 @@
     }
     if (state.phase === 'over') {
       state.overT += dt;
-      if (pressed.start && state.overT > 1.0) { pressed.start = false; newGame(); }
+      if (pressed.start && state.overT > 1.0) { pressed.start = false; retry(); }
       pressed.start = false;
       return;
     }
@@ -822,7 +826,7 @@
       ctx.font = `bold ${name === 'dash' ? 16 : 13}px sans-serif`;
       ctx.fillText(b.label, b.x, b.y + 3);
       ctx.font = '10px sans-serif';
-      ctx.fillText(b.key, b.x, b.y + 17);
+      if (!isTouch) ctx.fillText(b.key, b.x, b.y + 17);
     }
     ctx.restore();
   }
@@ -866,7 +870,15 @@
     centerText('100球のフライ、全部捕れるか!?', 205, 26);
     ctx.font = '17px sans-serif';
     ctx.fillStyle = '#e6e6e6';
-    const lines = [
+    // タッチ操作(アプリ・スマホ)ではキー名ではなくボタン名で案内する
+    const lines = isTouch ? [
+      '移動 : 左下の方角リングをタッチ(16方位・中心から離すほど速い)',
+      'ダッシュ : ダッシュボタンを押している間(スタミナ消費)',
+      'ジャンプ : ジャンプボタン — フェンス際の打球は「ホームランキャッチ」',
+      'ダイブ : ダイブボタン — 前に落ちるライナーは飛び込んで捕れ!',
+      '捕球は自動。芝に落ちるボールの「影」で落下点を読もう。',
+      '黄色い輪が着地点ナビ(上の「ナビ」ボタンでオン/オフ)',
+    ] : [
       '移動 : 方角リングをタッチ / 矢印キー・WASD・テンキー(8方向)',
       'ダッシュ : ダッシュボタン長押し / Shift・Space(スタミナ消費)',
       'ジャンプ : Z  — フェンス際の打球はジャンプで「ホームランキャッチ」',
@@ -876,8 +888,8 @@
     ];
     lines.forEach((l, i) => ctx.fillText(l, W / 2, 262 + i * 30));
     if (state.best) centerText(`ベスト: ${state.best.catches} / ${TOTAL} 球  (SCORE ${state.best.score})`, 470, 20, '#9fe8ff');
-    if (Math.floor(state.time * 2) % 2 === 0) centerText('SPACE / タップでプレイボール', 540, 30, '#ffffff');
-    centerText('音が鳴ります(M キー / 上のボタンで消音)。iPhone はマナーモードを解除してください', 600, 15, '#cfd8dc', 'normal');
+    if (Math.floor(state.time * 2) % 2 === 0) centerText(isTouch ? 'タップでプレイボール' : 'SPACE / タップでプレイボール', 540, 30, '#ffffff');
+    if (!NATIVE) centerText('音が鳴ります(M キー / 上のボタンで消音)。iPhone はマナーモードを解除してください', 590, 15, '#cfd8dc', 'normal');
   }
 
   function rankOf(c) {
@@ -905,7 +917,7 @@
     if (state.newRecord) centerText('NEW RECORD!', 336, 24, '#ff8a65');
     else if (state.best) centerText(`ベスト: ${state.best.catches} 球 (SCORE ${state.best.score})`, 336, 18, '#9fe8ff');
     // この下(y 約 360〜500)は HTML のシェアボタン
-    if (state.overT > 1.0 && Math.floor(state.time * 2) % 2 === 0) centerText('SPACE / ここをタップでもう一度', 560, 24);
+    if (state.overT > 1.0 && !retryBusy && Math.floor(state.time * 2) % 2 === 0) centerText(isTouch ? 'ここをタップでもう一度' : 'SPACE / ここをタップでもう一度', 560, 24);
   }
 
   // ---------- シェア(結果画面) ----------
@@ -927,7 +939,7 @@
     const text = shareText();
     $id('shareX').href = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(text) + '&url=' + encodeURIComponent(SHARE_URL);
     $id('shareLine').href = 'https://line.me/R/share?text=' + encodeURIComponent(text + '\n' + SHARE_URL);
-    $id('shareMsg').textContent = navigator.share ? '成績画像つきでシェアできます' : 'X・LINE・コピーからシェアしてください';
+    $id('shareMsg').textContent = NATIVE ? '共有メニューからシェアできます' : navigator.share ? '成績画像つきでシェアできます' : 'X・LINE・コピーからシェアしてください';
   }
 
   // 成績カード画像(1200x630)
@@ -964,6 +976,12 @@
 
   async function shareResult() {
     const text = shareText();
+    // アプリでは Android の共有メニューを出す
+    const nativeShare = plugin('Share');
+    if (nativeShare) {
+      try { await nativeShare.share({ title: 'センターフライ', text, url: SHARE_URL, dialogTitle: '結果をシェア' }); } catch (e) { /* キャンセル */ }
+      return;
+    }
     if (navigator.share) {
       try {
         const blob = await makeShareImage();
@@ -1030,6 +1048,7 @@
     if (state.phase === 'title') drawTitle();
     if (state.phase === 'over') drawOver();
     updateShareVisibility();
+    updateLegalVisibility();
     drawMute();
     drawNavButton();
   }
@@ -1101,6 +1120,48 @@
       ctx.beginPath(); ctx.arc(x + 3, y, 11, -0.9, 0.9); ctx.stroke();
     }
     ctx.restore();
+  }
+
+  // ---------- アプリ(Android)向け ----------
+  // 2 回に 1 回、「もう一度」の前に全画面広告を出す(Android アプリのみ)
+  let retryBusy = false, gameOvers = 0;
+  async function retry() {
+    if (retryBusy) return;
+    gameOvers++;
+    if (Ads.available && gameOvers % 2 === 0) {
+      retryBusy = true;
+      await Ads.showInterstitial(3000);
+      retryBusy = false;
+    }
+    newGame();
+  }
+
+  // アプリが裏に回ったら一時停止して音を止める
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      if (state.phase === 'ready' || state.phase === 'flight' || state.phase === 'result') state.paused = true;
+      Sound.suspend();
+    } else if (!Ads.showing) {
+      Sound.resume();
+    }
+  });
+  // Android の戻るボタン:プレイ中はポーズ切替、タイトル・結果画面ではアプリを閉じる
+  if (plugin('App')) {
+    plugin('App').addListener('backButton', () => {
+      if (state.phase === 'title' || state.phase === 'over') plugin('App').exitApp();
+      else togglePause();
+    });
+  }
+
+  // タイトル画面の下に、バージョン(アプリ版)・プライバシーポリシー・広告の設定(EU など)を出す
+  const legalEl = document.getElementById('legal');
+  if (window.APP_VERSION && window.APP_VERSION !== 'dev') document.getElementById('buildInfo').textContent = window.APP_VERSION;
+  Ads.initDone.then(() => { if (Ads.privacyOptionsRequired) document.getElementById('adPrivacy').hidden = false; });
+  document.getElementById('adPrivacyLink').addEventListener('click', (e) => { e.preventDefault(); Ads.showPrivacyOptions(); });
+  for (const ev of ['pointerdown', 'pointerup']) legalEl.addEventListener(ev, (e) => e.stopPropagation());
+  function updateLegalVisibility() {
+    const show = state.phase === 'title';
+    if (show === legalEl.hidden) legalEl.hidden = !show;
   }
 
   // ---------- メインループ ----------

@@ -6,7 +6,7 @@
 画面は **野手の背中越しにホームベースを見る3D視点**(ホームラン競争をセンター側から見た構図)。
 ナイター照明のスタジアムで、打者・投手・満員のスタンドを正面に見ながら打球を追います。
 
-`index.html` をブラウザで開くだけで遊べます(ビルド不要)。3D描画に同梱の three.js(`vendor/three.min.js`, MIT License)を使っています。
+`index.html` をブラウザで開くだけで遊べます(Web 版はビルド不要)。Android アプリ版もあります(下記)。3D描画に同梱の three.js(`vendor/three.min.js`, MIT License)を使っています。
 GitHub Pages などの静的ホスティングにそのまま置けます。
 
 ## 操作
@@ -66,3 +66,32 @@ GitHub Pages などの静的ホスティングにそのまま置けます。
 - 10連続アウトごとに花火の追加とエアホーン
 - ヒットやホームランを許すと観客のため息「あー…」
 - 試合終了時はファンファーレ。全球捕球なら花火の大連発
+
+## Android アプリ
+
+[Capacitor](https://capacitorjs.com/) でゲームのファイルをアプリに同梱し、Android アプリにしています(オフラインで遊べます)。
+構成は techgymjp/jet-fighter の `docs/ANDROID_PORTING.md` と同じです。
+
+- パッケージ名: `jp.techgym.centerfly`
+- 横画面固定・全画面・プレイ中は画面を消さない
+- 戻るボタン: プレイ中は一時停止、タイトル・結果画面ではアプリを終了
+- 別アプリに切り替えると自動で一時停止して音を止める
+- シェアは Android の共有メニュー
+- 広告(AdMob): 結果画面から「もう一度」を選んだとき、2 回に 1 回インタースティシャル広告。EU など同意が必要な地域ではタイトル画面に「広告の設定」
+- タイトル画面にバージョン(ビルド番号)とプライバシーポリシーへのリンク
+
+ビルドは GitHub Actions(`.github/workflows/android.yml`)で行います。
+
+1. `npm ci` → `npm run build`(`www/` に Web ファイルをコピーし、`ads-config.js` と `build-info.js` を生成)→ `npx cap sync android` → `./gradlew assembleDebug`
+2. 既定ブランチなら、Release `android-latest` の `center-fly.apk` を差し替え(動作確認用・テスト広告)
+   `https://github.com/techgymjp/center-fly/releases/latest/download/center-fly.apk`
+3. GitHub Secrets に署名鍵(`ANDROID_KEYSTORE_BASE64` / `ANDROID_KEYSTORE_PASSWORD` / `ANDROID_KEY_ALIAS` / `ANDROID_KEY_PASSWORD`)があれば、本番広告で署名付き AAB を作り Artifact に上げる
+
+手元で試すとき: `npm install` → `npm run android:sync` → `npm run android:open`(Android Studio が必要)。
+アイコンと起動画面は `assets/` の元画像から `npx @capacitor/assets generate --android` で生成しています。
+
+## ライセンス
+
+著作権はテックジム株式会社に帰属します(All rights reserved)。許可なく複製・改変・再配布すること、Web サイトやアプリ(Google Play、App Store など)として公開・販売すること、名前・ロゴ・アイコン・画像を使うことを禁止します。
+テックジムの受講生が学習目的で複製・改変することは許可しますが、アプリストアでの公開・広告の掲載・販売などの商用利用は禁止し、著作権表示を残してください。
+同梱の three.js は MIT License です。詳しくは [LICENSE](LICENSE) を見てください。

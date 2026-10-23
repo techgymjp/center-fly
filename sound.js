@@ -341,8 +341,12 @@ window.Sound = (() => {
     window.addEventListener(ev, init, { capture: true, passive: true });
   }
 
+  // アプリが裏に回ったときや広告の表示中は音を止める
+  function suspend() { if (AC && AC.state === 'running') AC.suspend(); }
+  function resume() { if (AC && AC.state === 'suspended') AC.resume(); }
+
   return {
-    init, update, setMuted,
+    init, update, setMuted, suspend, resume,
     get muted() { return muted; },
     get ready() { return !!AC && AC.state === 'running'; },
     crack, glove, jump, dive, cheer, sigh, horn, launch, boom, fanfare,

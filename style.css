@@ -146,3 +146,28 @@ html, body {
 #share .sbtn:active {
   transform: translateY(2px);
 }
+
+/* タイトル画面の下: バージョン・プライバシーポリシー・広告の設定 */
+#legal {
+  position: absolute;
+  right: 12px;
+  bottom: 8px;
+  z-index: 2;
+  font-family: sans-serif;
+  font-size: 12px;
+  color: #b0bec5;
+}
+
+#legal[hidden],
+#legal [hidden] {
+  display: none;
+}
+
+#legal a {
+  color: #cfe8ff;
+}
+
+#buildInfo {
+  margin-right: 10px;
+  opacity: 0.8;
+}

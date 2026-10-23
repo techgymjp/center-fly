@@ -21,6 +21,11 @@
   <div id="stage">
     <canvas id="view"></canvas>
     <canvas id="game" width="960" height="640"></canvas>
+    <div id="legal" hidden>
+      <span id="buildInfo"></span>
+      <a href="https://techgym.jp/privacy-policy/" target="_blank" rel="noopener">プライバシーポリシー</a>
+      <span id="adPrivacy" hidden>|<a href="#" id="adPrivacyLink">広告の設定</a></span>
+    </div>
     <div id="share" hidden>
       <button id="shareBtn" class="sbtn main" type="button">📤 結果をシェア<small id="shareMsg">成績画像つきでシェアできます</small></button>
       <div class="row">
@@ -33,6 +38,9 @@
 </div>
 <script src="vendor/three.min.js"></script>
 <script src="sound.js"></script>
+<script src="build-info.js"></script>
+<script src="ads-config.js"></script>
+<script src="ads.js"></script>
 <script src="scene3d.js"></script>
 <script src="game.js"></script>
 </body>
