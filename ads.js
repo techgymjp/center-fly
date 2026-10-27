@@ -22,10 +22,9 @@ window.Ads = (() => {
         rewarded: 'ca-app-pub-3940256099942544/1712485313',
         banner: 'ca-app-pub-3940256099942544/2934735716',
       },
-      // TODO: リワードは AdMob の iOS 用の広告ユニット ID に差し替える(それまではテスト広告のまま)
       production: {
         interstitial: 'ca-app-pub-6411535997477460/8874862479',
-        rewarded: 'ca-app-pub-3940256099942544/1712485313',
+        rewarded: 'ca-app-pub-6411535997477460/5871752628',
         banner: 'ca-app-pub-6411535997477460/7184834296',
       },
     },
