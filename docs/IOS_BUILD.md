@@ -158,7 +158,16 @@ JET STRIKE の `docs/IOS_BUILD.md` の 7 章と同じです。App Store Connect 
 
 **注意**：証明書（.p12）、そのパスワード、API キー（.p8）は、チャット・AI へのアップロード・リポジトリへのコミットで**絶対に共有しない**でください。
 
-いまは `.github/workflows/ios.yml` で、push のたびに「Xcode でビルドできるか」だけを確認しています（署名なし・シミュレーター向け。公開リポジトリなので無料）。
+**Secrets は登録済みで、自動アップロードのワークフロー（`.github/workflows/ios-release.yml`）も入っています。**
+
+- 既定ブランチに push するたびに、本番広告の設定でビルドし、App Store Connect（TestFlight）にアップロードします
+- ビルド番号は「Actions の実行回数 + 100」（101、102…）。Mac から手作業でアップロードする番号（1、2、3…）と重なりません
+- Version は `package.json` の version（いまは 1.0.0）。上げるときは `package.json` を変えます
+- 手動で動かすときは、Actions の「iOS release (TestFlight)」→「Run workflow」
+- 審査への提出は、これまでどおり App Store Connect で行います（TestFlight に届いたビルドを 5 章で選ぶ）
+- 前提：App Store Connect に「センターフライ」（Bundle ID `jp.techgym.centerfly`）のアプリを作ってあること（0 章）
+
+あわせて `.github/workflows/ios.yml` で、push のたびに「Xcode でビルドできるか」も確認しています（署名なし・シミュレーター向け。公開リポジトリなので無料）。
 
 ---
 

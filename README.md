@@ -109,7 +109,7 @@ Android 版と同じ Capacitor のプロジェクトに `ios/` を足して作�
 - 広告(AdMob の iOS 用アプリ): インタースティシャル・リワード・バナーは Android と同じ使い方。起動時に App Tracking Transparency の確認
 - iPhone の Dynamic Island やホームバーに操作ボタンがかからないよう、画面は安全領域の内側に表示する
 - `npm run ios:sync`(テスト広告)/ `npm run ios:release`(本番広告。App Store 用)/ `npm run ios:open`
-- GitHub Actions(`.github/workflows/ios.yml`)で、push のたびに Xcode でビルドできるかを確認(署名なし)
+- GitHub Actions: `.github/workflows/ios.yml` で push のたびに Xcode でビルドできるかを確認(署名なし)、`.github/workflows/ios-release.yml` で本番広告の設定でビルドして TestFlight にアップロード(ビルド番号は実行回数 + 100)
 - App Store 用の画像は `docs/store/ios/`、掲載文は `docs/store/ios/listing-appstore.md`、審査用の説明は `docs/store/ios/review-notes.md`
 
 ## ライセンス
