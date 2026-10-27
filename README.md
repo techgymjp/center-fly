@@ -106,7 +106,7 @@ Android 版と同じ Capacitor のプロジェクトに `ios/` を足して作�
 
 - Bundle ID: `jp.techgym.centerfly`(Android と同じ)。iPhone 専用・横画面固定・全画面・プレイ中は画面を消さない
 - ホーム画面の名前: 日本語の端末では「センターフライ」、それ以外は「Center Fly」
-- 広告(AdMob の iOS 用アプリ): インタースティシャルとリワードは Android と同じ使い方。iOS ではバナーは出さない。起動時に App Tracking Transparency の確認
+- 広告(AdMob の iOS 用アプリ): インタースティシャル・リワード・バナーは Android と同じ使い方。起動時に App Tracking Transparency の確認
 - iPhone の Dynamic Island やホームバーに操作ボタンがかからないよう、画面は安全領域の内側に表示する
 - `npm run ios:sync`(テスト広告)/ `npm run ios:release`(本番広告。App Store 用)/ `npm run ios:open`
 - GitHub Actions(`.github/workflows/ios.yml`)で、push のたびに Xcode でビルドできるかを確認(署名なし)

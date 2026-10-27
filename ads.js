@@ -20,13 +20,13 @@ window.Ads = (() => {
       test: {
         interstitial: 'ca-app-pub-3940256099942544/4411468910',
         rewarded: 'ca-app-pub-3940256099942544/1712485313',
-        banner: null, // iOS ではバナーを出さない(広告ユニットを作ったら入れる)
+        banner: 'ca-app-pub-3940256099942544/2934735716',
       },
-      // TODO: AdMob の iOS 用「センターフライ」の広告ユニット ID に差し替える(それまではテスト広告のまま)
+      // TODO: リワードは AdMob の iOS 用の広告ユニット ID に差し替える(それまではテスト広告のまま)
       production: {
-        interstitial: 'ca-app-pub-3940256099942544/4411468910',
+        interstitial: 'ca-app-pub-6411535997477460/8874862479',
         rewarded: 'ca-app-pub-3940256099942544/1712485313',
-        banner: null,
+        banner: 'ca-app-pub-6411535997477460/7184834296',
       },
     },
   };
