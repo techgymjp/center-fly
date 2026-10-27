@@ -6,7 +6,7 @@
 画面は **野手の背中越しにホームベースを見る3D視点**(ホームラン競争をセンター側から見た構図)。
 ナイター照明のスタジアムで、打者・投手・満員のスタンドを正面に見ながら打球を追います。
 
-`index.html` をブラウザで開くだけで遊べます(Web 版はビルド不要)。Android アプリ版もあります(下記)。3D描画に同梱の three.js(`vendor/three.min.js`, MIT License)を使っています。
+`index.html` をブラウザで開くだけで遊べます(Web 版はビルド不要)。Android / iOS アプリ版もあります(下記)。3D描画に同梱の three.js(`vendor/three.min.js`, MIT License)を使っています。
 GitHub Pages などの静的ホスティングにそのまま置けます。
 
 ## 言語
@@ -99,6 +99,18 @@ GitHub Pages などの静的ホスティングにそのまま置けます。
 
 手元で試すとき: `npm install` → `npm run android:sync` → `npm run android:open`(Android Studio が必要)。
 アイコンと起動画面は `assets/` の元画像から `npx @capacitor/assets generate --android` で生成しています。
+
+## iOS アプリ
+
+Android 版と同じ Capacitor のプロジェクトに `ios/` を足して作っています(構成は techgymjp/jet-fighter と同じ)。Mac での作業手順は [docs/IOS_BUILD.md](docs/IOS_BUILD.md) です。
+
+- Bundle ID: `jp.techgym.centerfly`(Android と同じ)。iPhone 専用・横画面固定・全画面・プレイ中は画面を消さない
+- ホーム画面の名前: 日本語の端末では「センターフライ」、それ以外は「Center Fly」
+- 広告(AdMob の iOS 用アプリ): インタースティシャルとリワードは Android と同じ使い方。iOS ではバナーは出さない。起動時に App Tracking Transparency の確認
+- iPhone の Dynamic Island やホームバーに操作ボタンがかからないよう、画面は安全領域の内側に表示する
+- `npm run ios:sync`(テスト広告)/ `npm run ios:release`(本番広告。App Store 用)/ `npm run ios:open`
+- GitHub Actions(`.github/workflows/ios.yml`)で、push のたびに Xcode でビルドできるかを確認(署名なし)
+- App Store 用の画像は `docs/store/ios/`、掲載文は `docs/store/ios/listing-appstore.md`、審査用の説明は `docs/store/ios/review-notes.md`
 
 ## ライセンス
 
