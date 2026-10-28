@@ -118,7 +118,7 @@ npm run ios:open
 | コンテンツの配信権（App 情報） | 第三者のコンテンツ：「いいえ」（絵・音はすべて自前。three.js は MIT ライセンスのライブラリ） |
 | 著作権 | 2026 TECH GYM K.K. |
 | ビルド | TestFlight で確認したビルドを選ぶ |
-| 年齢制限 | 質問に答える（暴力・流血・性的表現・ギャンブルなし。野球のゲーム） |
+| 年齢制限 | 質問に答える（暴力・流血・性的表現・ギャンブルなし。野球のゲーム）。**「広告（Advertising）」は必ず「はい」**（AdMob が入っているため。「いいえ」のままだと自動チェックで審査が止まる） |
 | App のプライバシー | AdMob が収集するデータを申告する（下記） |
 | App Review に関する情報 | ログイン不要。連絡先を入力。メモに `docs/store/ios/review-notes.md` の文を入れる |
 
@@ -182,6 +182,7 @@ JET STRIKE の `docs/IOS_BUILD.md` の 7 章と同じです。App Store Connect 
 | ビルドが古いゲームのまま | `npm run ios:sync`（または `ios:release`）を実行し忘れている。`git pull` してから実行し直す |
 | アップロードしたビルドが選べない | App Store Connect のバージョンが「1.0」のまま。「1.0.0」に直して保存する |
 | 「審査用に追加できません」 | 「App 情報」のコンテンツの配信権、「App のプライバシー」のプライバシーポリシー URL が未入力 |
+| 審査が「the app may include advertising but you did not select "Yes" for the "Advertising" content descriptor」で止まる | 「App 情報」→「年齢制限」の「広告」を「はい」にして保存し、もう一度審査へ提出する（ビルドはそのままでよい） |
 | Archive で「Xcode Cloud can automate…」が出る | 「Remind Me Later」で閉じてよい |
 | 音が鳴らない | 一度画面をタップする（タップで音が有効になる）。音量とスピーカーボタン（上部）を確認 |
 | App Store の審査で「Xcode が古い」と言われる | Xcode を最新版に更新してから Archive し直す |
