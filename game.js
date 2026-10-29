@@ -1234,8 +1234,10 @@
     Ads.setBanner((state.phase === 'title' || state.phase === 'over' || paused) && !isPortrait());
   }
 
-  // タイトル画面の下に、バージョン(アプリ版)・プライバシーポリシー・広告の設定(EU など)を出す
+  // タイトル画面の下に、Google Play へのリンク(Web 版)・バージョン(アプリ版)・プライバシーポリシー・広告の設定(EU など)を出す
   const legalEl = document.getElementById('legal');
+  const storeEl = document.getElementById('storeLink');
+  for (const ev of ['pointerdown', 'pointerup']) storeEl.addEventListener(ev, (e) => e.stopPropagation());
   if (window.APP_VERSION && window.APP_VERSION !== 'dev') document.getElementById('buildInfo').textContent = window.APP_VERSION;
   Ads.initDone.then(() => { if (Ads.privacyOptionsRequired) document.getElementById('adPrivacy').hidden = false; });
   document.getElementById('adPrivacyLink').addEventListener('click', (e) => { e.preventDefault(); Ads.showPrivacyOptions(); });
@@ -1249,7 +1251,7 @@
 
   function updateLegalVisibility() {
     const show = state.phase === 'title';
-    if (show === legalEl.hidden) { legalEl.hidden = !show; langEl.hidden = !show; }
+    if (show === legalEl.hidden) { legalEl.hidden = !show; langEl.hidden = !show; storeEl.hidden = !show || NATIVE; }
   }
 
   // ---------- メインループ ----------
