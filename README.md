@@ -6,7 +6,11 @@
 画面は **野手の背中越しにホームベースを見る3D視点**(ホームラン競争をセンター側から見た構図)。
 ナイター照明のスタジアムで、打者・投手・満員のスタンドを正面に見ながら打球を追います。
 
-`index.html` をブラウザで開くだけで遊べます(Web 版はビルド不要)。Android / iOS アプリ版もあります(下記)。3D描画に同梱の three.js(`vendor/three.min.js`, MIT License)を使っています。
+`index.html` をブラウザで開くだけで遊べます(Web 版はビルド不要)。Android / iOS アプリ版もあります(下記)。
+
+- **Google Play**: https://play.google.com/store/apps/details?id=jp.techgym.centerfly (QR コード: `docs/play-qr.png`)
+- **App Store**: 審査中
+3D描画に同梱の three.js(`vendor/three.min.js`, MIT License)を使っています。
 GitHub Pages などの静的ホスティングにそのまま置けます。
 
 ## 言語
