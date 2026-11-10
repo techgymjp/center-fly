@@ -10,8 +10,10 @@ window.I18N = (() => {
       'legal.privacy': 'プライバシーポリシー',
       'legal.adSettings': '広告の設定',
       'url.privacy': 'https://techgym.jp/privacy-policy/',
+      // web-only:start
       'legal.play': '▶ Android アプリ(Google Play)',
       'url.play': 'https://play.google.com/store/apps/details?id=jp.techgym.centerfly&hl=ja',
+      // web-only:end
 
       'btn.dash': 'ダッシュ', 'btn.jump': 'ジャンプ', 'btn.dive': 'ダイブ',
       'ring.fwd': '前進', 'ring.back': 'バック',
@@ -97,8 +99,10 @@ window.I18N = (() => {
       'legal.privacy': 'Privacy Policy',
       'legal.adSettings': 'Ad settings',
       'url.privacy': 'https://techgym.jp/privacy-policy-en/',
+      // web-only:start
       'legal.play': '▶ Android app (Google Play)',
       'url.play': 'https://play.google.com/store/apps/details?id=jp.techgym.centerfly&hl=en',
+      // web-only:end
 
       'btn.dash': 'DASH', 'btn.jump': 'JUMP', 'btn.dive': 'DIVE',
       'ring.fwd': 'IN', 'ring.back': 'BACK',

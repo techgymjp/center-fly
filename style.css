@@ -174,7 +174,8 @@ html, body {
   color: #cfe8ff;
 }
 
-/* Web 版だけ: タイトル画面の左上に Google Play へのリンク */
+/* web-only:start */
+/* Web 版だけ: タイトル画面の左上に Google Play へのリンク(アプリのビルドでは取り除く) */
 #storeLink {
   position: absolute;
   left: 12px;
@@ -194,6 +195,7 @@ html, body {
 #storeLink[hidden] {
   display: none;
 }
+/* web-only:end */
 
 #buildInfo {
   margin-right: 10px;

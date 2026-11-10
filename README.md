@@ -11,7 +11,7 @@
 - **Google Play**: https://play.google.com/store/apps/details?id=jp.techgym.centerfly (QR コード: `docs/play-qr.png`)
 - **App Store**: 審査中
 
-Web 版のタイトル画面の左上には Google Play へのリンクを出しています(アプリ版では出しません)。
+Web 版のタイトル画面の左上には Google Play へのリンクを出しています。アプリのビルド(`npm run build`)では、`web-only` の目印で囲んだ Web 版だけの部分(このリンクとテスト用フック)を取り除きます(iOS の審査対策)。
 
 3D描画に同梱の three.js(`vendor/three.min.js`, MIT License)を使っています。
 GitHub Pages などの静的ホスティングにそのまま置けます。

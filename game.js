@@ -1234,10 +1234,8 @@
     Ads.setBanner((state.phase === 'title' || state.phase === 'over' || paused) && !isPortrait());
   }
 
-  // タイトル画面の下に、Google Play へのリンク(Web 版)・バージョン(アプリ版)・プライバシーポリシー・広告の設定(EU など)を出す
+  // タイトル画面の下に、バージョン(アプリ版)・プライバシーポリシー・広告の設定(EU など)を出す
   const legalEl = document.getElementById('legal');
-  const storeEl = document.getElementById('storeLink');
-  for (const ev of ['pointerdown', 'pointerup']) storeEl.addEventListener(ev, (e) => e.stopPropagation());
   if (window.APP_VERSION && window.APP_VERSION !== 'dev') document.getElementById('buildInfo').textContent = window.APP_VERSION;
   Ads.initDone.then(() => { if (Ads.privacyOptionsRequired) document.getElementById('adPrivacy').hidden = false; });
   document.getElementById('adPrivacyLink').addEventListener('click', (e) => { e.preventDefault(); Ads.showPrivacyOptions(); });
@@ -1246,12 +1244,19 @@
   const langEl = document.getElementById('langSel');
   document.querySelectorAll('[data-lang]').forEach((el) => el.addEventListener('click', () => I18N.setLang(el.dataset.lang)));
   for (const ev of ['pointerdown', 'pointerup']) langEl.addEventListener(ev, (e) => e.stopPropagation());
+  const titleOnly = [legalEl, langEl]; // タイトル画面でだけ出す DOM
+  // web-only:start
+  // Web 版だけ: 左上の Google Play へのリンク(アプリのビルドではこの範囲ごと取り除く)
+  const storeEl = document.getElementById('storeLink');
+  for (const ev of ['pointerdown', 'pointerup']) storeEl.addEventListener(ev, (e) => e.stopPropagation());
+  titleOnly.push(storeEl);
+  // web-only:end
   I18N.onChange(() => { if (!shareEl.hidden) prepareShare(); });
   I18N.apply();
 
   function updateLegalVisibility() {
     const show = state.phase === 'title';
-    if (show === legalEl.hidden) { legalEl.hidden = !show; langEl.hidden = !show; storeEl.hidden = !show || NATIVE; }
+    if (show === legalEl.hidden) for (const el of titleOnly) el.hidden = !show;
   }
 
   // ---------- メインループ ----------
@@ -1280,7 +1285,9 @@
     const frameDt = Math.max(0, Math.min(0.1, (now - last) / 1000));
     last = now;
     acc += frameDt;
-    if (api.hold) acc = 0; // テスト用: シミュレーションを止めて描画だけ行う
+    // web-only:start
+    if (window.CenterFly.hold) acc = 0; // テスト用: シミュレーションを止めて描画だけ行う
+    // web-only:end
     while (acc >= DT) { update(DT); acc -= DT; }
     Scene3D.render(state, frameDt, { jumpHeight, forward });
     Sound.update(state);
@@ -1289,11 +1296,13 @@
   }
   requestAnimationFrame(frame);
 
-  // テスト・デバッグ用フック
-  const api = window.CenterFly = {
+  // web-only:start
+  // テスト・デバッグ用フック(Web 版だけ。アプリのビルドでは取り除く)
+  window.CenterFly = {
     hold: false,
     state, newGame, update, DT, TOTAL,
     setBot(fn) { bot = fn; },
     consts: { G, FENCE, WALL_H, REACH, CATCH_R, JUMP_T, JUMP_H, DIVE_T, DIVE_V, WALK, DASH, HOME_POS },
   };
+  // web-only:end
 })();
