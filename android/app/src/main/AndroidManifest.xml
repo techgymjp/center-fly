@@ -36,4 +36,7 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- 横画面固定(sensorLandscape)にすると「横画面のハードウェアが必須」とみなされ、
+         一部のタブレット・PC 版 Google Play Games・Android XR でインストールできなくなるので、必須にしない -->
+    <uses-feature android:name="android.hardware.screen.landscape" android:required="false" />
 </manifest>
