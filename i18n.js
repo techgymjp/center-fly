@@ -5,8 +5,10 @@ window.I18N = (() => {
   const dict = {
     ja: {
       'doc.title': 'センターフライ',
+      // web-only:start
       'rotate.msg': 'スマホを横向きにしてください',
       'rotate.sub': 'センターフライは横画面で遊ぶゲームです',
+      // web-only:end
       'legal.privacy': 'プライバシーポリシー',
       'legal.adSettings': '広告の設定',
       'url.privacy': 'https://techgym.jp/privacy-policy/',
@@ -36,7 +38,9 @@ window.I18N = (() => {
       'title.best': 'ベスト: {c} / {t} 球  (SCORE {s})',
       'title.start.touch': 'タップでプレイボール',
       'title.start.key': 'SPACE / タップでプレイボール',
+      // web-only:start
       'title.sound': '音が鳴ります(M キー / 上のボタンで消音)。iPhone はマナーモードを解除してください',
+      // web-only:end
 
       'hud.pitch': '第 {n} 球 / {t}',
       'hud.catches': '捕球 {n}', 'hud.misses': '落球 {n}', 'hud.streak': '連続 {n}',
@@ -94,8 +98,10 @@ window.I18N = (() => {
     },
     en: {
       'doc.title': 'Center Fly',
+      // web-only:start
       'rotate.msg': 'Please rotate your phone to landscape',
       'rotate.sub': 'Center Fly is played in landscape mode',
+      // web-only:end
       'legal.privacy': 'Privacy Policy',
       'legal.adSettings': 'Ad settings',
       'url.privacy': 'https://techgym.jp/privacy-policy-en/',
@@ -125,7 +131,9 @@ window.I18N = (() => {
       'title.best': 'Best: {c} / {t}  (SCORE {s})',
       'title.start.touch': 'Tap to play ball',
       'title.start.key': 'SPACE / Tap to play ball',
+      // web-only:start
       'title.sound': 'This game has sound (M key / top button to mute). On iPhone, turn off silent mode.',
+      // web-only:end
 
       'hud.pitch': 'Ball {n} / {t}',
       'hud.catches': 'Outs {n}', 'hud.misses': 'Drops {n}', 'hud.streak': 'Streak {n}',

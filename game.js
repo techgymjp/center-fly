@@ -20,7 +20,7 @@
   const DT = 1 / 120;
   const t = (k, v) => I18N.t(k, v);
 
-  // Android アプリ（Capacitor）で動いているか。Web 版では Capacitor がないので何もしない
+  // アプリ（Capacitor）で動いているか。Web 版では Capacitor がないので何もしない
   const NATIVE = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   const plugin = (name) => (NATIVE && window.Capacitor.Plugins ? window.Capacitor.Plugins[name] : null);
 
@@ -56,7 +56,9 @@
   const keys = new Set();
   const input = { mx: 0, my: 0, sx: 0, sy: 0, dash: false, jump: false, dive: false };
   const pressed = { jump: false, dive: false, start: false };
+  // web-only:start
   let bot = null; // テスト用: (state) => input を返す関数
+  // web-only:end
 
   const RING = { x: 125, y: 510, r: 95, dead: 14 };
   const BTN = {
@@ -165,12 +167,14 @@
   }
 
   function readInput() {
+    // web-only:start
     if (bot) {
       const b = bot(state);
       input.mx = b.mx || 0; input.my = b.my || 0; input.dash = !!b.dash;
       input.jump = !!b.jump; input.dive = !!b.dive;
       return;
     }
+    // web-only:end
     let mx = 0, my = 0;
     // テンキー 1-9 の8方向 + 矢印/WASD
     if (keys.has('ArrowUp') || keys.has('w') || keys.has('8') || keys.has('7') || keys.has('9')) my += 1;
@@ -577,14 +581,17 @@
     state.popups.push({ text, color, size, t: -delay, life: 1.5, idx: state.popups.length });
   }
 
-  // スマホは横画面で遊ぶ。縦向きの間は案内を出して一時停止する
   const isTouch = window.matchMedia('(pointer: coarse)').matches;
+  // 縦向きかどうか。アプリは OS の設定で横画面に固定しているので、向きによって動きを変えない
+  let isPortrait = () => false;
+  // web-only:start
+  // スマホのブラウザは横画面で遊ぶ。縦向きの間は案内を出して一時停止する
   const portraitMQ = window.matchMedia('(orientation: portrait)');
-  const isPortrait = () => isTouch && portraitMQ.matches;
+  isPortrait = () => isTouch && portraitMQ.matches;
 
-  // スタートのタップで全画面+横向き固定を試す(Android Chrome など。iPhone は非対応なので何もしない)
+  // スタートのタップで全画面+横向き固定を試す(Android Chrome など。iPhone のブラウザは非対応なので何もしない)
   function goLandscape() {
-    if (!isTouch || NATIVE) return; // アプリは AndroidManifest で横画面に固定している
+    if (!isTouch) return;
     const el = document.documentElement;
     const lock = () => {
       if (screen.orientation && screen.orientation.lock) screen.orientation.lock('landscape').catch(() => {});
@@ -595,6 +602,7 @@
     } catch (e) { /* 非対応 */ }
   }
   canvas.addEventListener('pointerup', () => { if (state.phase === 'title' || state.phase === 'over') goLandscape(); });
+  // web-only:end
 
   function togglePause() {
     if (state.phase === 'title' || state.phase === 'over') return;
@@ -887,7 +895,9 @@
     lines.forEach((l, i) => ctx.fillText(l, W / 2, 262 + i * 30));
     if (state.best) centerText(t('title.best', { c: state.best.catches, t: TOTAL, s: state.best.score }), 470, 20, '#9fe8ff');
     if (Math.floor(state.time * 2) % 2 === 0) centerText(t(isTouch ? 'title.start.touch' : 'title.start.key'), 540, 30, '#ffffff');
-    if (!NATIVE) centerText(t('title.sound'), 590, 15, '#cfd8dc', 'normal');
+    // web-only:start
+    centerText(t('title.sound'), 590, 15, '#cfd8dc', 'normal');
+    // web-only:end
   }
 
   function rankOf(c) {
@@ -975,7 +985,7 @@
 
   async function shareResult() {
     const text = shareText();
-    // アプリでは Android の共有メニューを出す
+    // アプリでは OS の共有メニューを出す
     const nativeShare = plugin('Share');
     if (nativeShare) {
       try { await nativeShare.share({ title: t('share.title'), text, url: SHARE_URL, dialogTitle: t('share.dialog') }); } catch (e) { /* キャンセル */ }
@@ -1123,8 +1133,8 @@
     ctx.restore();
   }
 
-  // ---------- アプリ(Android)向け ----------
-  // 「もう一度」の前に毎回、全画面広告を出す(Android アプリのみ)
+  // ---------- アプリ向け ----------
+  // 「もう一度」の前に毎回、全画面広告を出す(アプリのみ)
   let retryBusy = false;
   async function retry() {
     if (retryBusy || titleBusy) return;
@@ -1145,6 +1155,7 @@
       Sound.resume();
     }
   });
+  // android-only:start
   // Android の戻るボタン:プレイ中はポーズ切替、タイトル・結果画面ではアプリを閉じる
   if (plugin('App')) {
     plugin('App').addListener('backButton', () => {
@@ -1152,12 +1163,13 @@
       else togglePause();
     });
   }
+  // android-only:end
 
   // 結果画面の「もう一度」ボタン
   $id('retryBtn').addEventListener('click', () => { audio(); if (state.phase === 'over') retry(); });
 
   // ---------- タイトルへ戻る(結果画面・ポーズ画面) ----------
-  // 戻る前に毎回、全画面広告を出す(Android アプリのみ)
+  // 戻る前に毎回、全画面広告を出す(アプリのみ)
   let titleBusy = false;
   async function goTitle() {
     if (titleBusy || retryBusy) return;

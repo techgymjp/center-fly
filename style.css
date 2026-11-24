@@ -33,6 +33,7 @@ html, body {
   height: min(calc(100dvh - var(--st) - var(--sb)), calc((100vw - var(--sl) - var(--sr)) * 0.75));
 }
 
+/* web-only:start */
 /* スマホを縦に持っているときの案内 */
 #rotate {
   display: none;
@@ -77,6 +78,7 @@ html, body {
 @media (orientation: portrait) and (pointer: coarse) {
   #rotate { display: flex; }
 }
+/* web-only:end */
 
 #stage canvas {
   position: absolute;

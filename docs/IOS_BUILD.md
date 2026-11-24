@@ -167,7 +167,12 @@ JET STRIKE の `docs/IOS_BUILD.md` の 7 章と同じです。App Store Connect 
 - 審査への提出は、これまでどおり App Store Connect で行います（TestFlight に届いたビルドを 5 章で選ぶ）
 - 前提：App Store Connect に「センターフライ」（Bundle ID `jp.techgym.centerfly`）のアプリを作ってあること（0 章）
 - 署名は手動です。Secrets の配布用証明書だけを使い、App Store 用のプロファイル「CenterFly App Store (GitHub Actions)」を実行のたびに App Store Connect API で作り直します（`.github/scripts/asc-appstore-profile.mjs`）。Xcode の自動署名は、GitHub の Mac では実行のたびに開発用の証明書を作り、上限に達すると失敗するため使いません
-- アプリのビルド（`npm run build` → `www/`）では、Web 版だけの部分（Google Play へのリンク、テスト用フック）を取り除きます。iOS の審査で「審査中に隠した機能」（Guideline 5.6）とみなされないようにするためです。Web 版だけの部分は、HTML は `<!-- web-only … -->`〜`<!-- /web-only -->`、JS は `// web-only:start`〜`// web-only:end`、CSS は `/* web-only:start */`〜`/* web-only:end */` で囲みます。`play.google.com` などが残っているとビルドが止まります
+- アプリのビルド（`npm run build` → `www/`）では、その OS で使わない部分を取り除きます。端末や OS によって「アプリでは隠す」「動きを変える」コードが入っていると、iOS の審査で「審査中に隠した機能」（Guideline 5.6）とみなされるためです
+  - `web-only`：Web 版だけ（Google Play へのリンク、スマホのブラウザを縦に持ったときの案内と一時停止、テスト用フック、マナーモードの案内）。アプリでは常に取り除く
+  - `android-only`：Android だけ（戻るボタン、Android の広告 ID）。`APP_PLATFORM=ios` のとき取り除く
+  - `ios-only`：iOS だけ（App Tracking Transparency、iOS の広告 ID）。`APP_PLATFORM=android` のとき取り除く
+  - 目印は、HTML が `<!-- web-only … -->`〜`<!-- /web-only -->`、JS が `// web-only:start`〜`// web-only:end`、CSS が `/* web-only:start */`〜`/* web-only:end */`（android-only・ios-only も同じ形）。取り除き漏れや CSS の `{ }` の数の食い違いがあるとビルドが止まります
+  - `npm run ios:sync` / `ios:release` と iOS のワークフローは `APP_PLATFORM=ios`、`android:sync` と Android のワークフローは `APP_PLATFORM=android` でビルドします
 
 あわせて `.github/workflows/ios.yml` で、push のたびに「Xcode でビルドできるか」も確認しています（署名なし・シミュレーター向け。公開リポジトリなので無料）。
 
@@ -185,7 +190,7 @@ JET STRIKE の `docs/IOS_BUILD.md` の 7 章と同じです。App Store Connect 
 | アップロードしたビルドが選べない | App Store Connect のバージョンが「1.0」のまま。「1.0.0」に直して保存する |
 | 「審査用に追加できません」 | 「App 情報」のコンテンツの配信権、「App のプライバシー」のプライバシーポリシー URL が未入力 |
 | 自動アップロードが「maximum number of certificates」で失敗する | 以前の自動署名のワークフローが作った開発用の証明書が上限に達している。いまのワークフローは開発用の証明書を使わないので、そのままで動く。Apple Developer の「Certificates」で「Created via API」の開発用の証明書（Apple Development）は、Mac の Xcode で使っているもの以外は失効してよい |
-| 審査が「Guideline 5.6 - Developer Code of Conduct」（審査中に隠した機能）で却下 | Web 版だけの部分がアプリに入っていないか確認する（上の web-only の目印）。新しいビルドに差し替え、App Review への返信で「Web 版用のリンクと隠す処理を取り除いた。審査中と審査後で機能は同じ」と説明し、実機の画面録画を添える |
+| 審査が「Guideline 5.6 - Developer Code of Conduct」（審査中に隠した機能）で却下 | 端末・向き・OS で動きが変わるコードがアプリに入っていないか確認する（上の web-only / android-only / ios-only の目印）。センターフライでは、ビルド 110 に残っていた「縦向きのとき画面全体を『横向きにしてください』で覆って一時停止する」処理が、iPad での審査で引っかかったと考えられる（ビルド 111 で削除）。新しいビルドに差し替え、App Review への返信で何を取り除いたかと「審査中と審査後で機能は同じ」ことを説明する |
 | 審査が「the app may include advertising but you did not select "Yes" for the "Advertising" content descriptor」で止まる | 「App 情報」→「年齢制限」の「広告」を「はい」にして保存し、もう一度審査へ提出する（ビルドはそのままでよい） |
 | Archive で「Xcode Cloud can automate…」が出る | 「Remind Me Later」で閉じてよい |
 | 音が鳴らない | 一度画面をタップする（タップで音が有効になる）。音量とスピーカーボタン（上部）を確認 |

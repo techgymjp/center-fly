@@ -44,7 +44,7 @@ jobs:
 
       - name: Copy web assets into the iOS project
         run: |
-          npm run build
+          APP_PLATFORM=ios npm run build
           npx cap sync ios
 
       # ジョブの defaults で shell: bash(pipefail あり)にしているので、xcodebuild が失敗すればこのステップも失敗する

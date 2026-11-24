@@ -1,8 +1,10 @@
-// Google AdMob 広告（Android / iOS アプリのときだけ動く。Web 版では何もしない）
+// Google AdMob 広告（アプリのときだけ動く。Web 版では何もしない）
 // 構成は techgymjp/jet-fighter の js/ads.js と同じ。センターフライではリワード・インタースティシャル・バナーを使う
 window.Ads = (() => {
-  // AdMob では Android と iOS を別のアプリとして登録しているので、広告ユニットも OS ごとに分かれている
+  // AdMob では OS ごとに別のアプリとして登録しているので、広告ユニットも OS ごとに分かれている。
+  // アプリのビルドでは、その OS の分だけを残す(scripts/build-web.js)
   const UNITS = {
+    // android-only:start
     android: {
       // Google 公式のテスト用広告ユニット
       test: {
@@ -16,6 +18,8 @@ window.Ads = (() => {
         banner: 'ca-app-pub-6411535997477460/8124687891',
       },
     },
+    // android-only:end
+    // ios-only:start
     ios: {
       test: {
         interstitial: 'ca-app-pub-3940256099942544/4411468910',
@@ -28,14 +32,16 @@ window.Ads = (() => {
         banner: 'ca-app-pub-6411535997477460/6532081220',
       },
     },
+    // ios-only:end
   };
   const RETRY_MS = 20000;      // 読み込みに失敗したら少し待って再挑戦する
   const cap = window.Capacitor;
   const native = !!(cap && cap.isNativePlatform && cap.isNativePlatform());
   const AdMob = native && cap.Plugins ? cap.Plugins.AdMob : null;
-  const platform = native && cap.getPlatform && cap.getPlatform() === 'ios' ? 'ios' : 'android';
+  const platform = native && cap.getPlatform ? cap.getPlatform() : '';
   const testing = window.AD_MODE !== 'production';
-  const ids = UNITS[platform][testing ? 'test' : 'production'];
+  // アプリのビルドではその OS の分だけが残っている
+  const ids = (UNITS[platform] || Object.values(UNITS)[0])[testing ? 'test' : 'production'];
 
   let ready = false;           // 広告をリクエストしてよい状態（初期化と同意確認が済んだ）
   let showing = false;
@@ -93,6 +99,7 @@ window.Ads = (() => {
     } catch (e) {
       ready = true;
     }
+    // ios-only:start
     // iOS では、広告用の ID を使ってよいか（App Tracking Transparency）を利用者に確認する。
     // 同意確認のあとに一度だけ出る。断られても広告は出せる（パーソナライズされないだけ）
     if (platform === 'ios') {
@@ -101,6 +108,7 @@ window.Ads = (() => {
         if (status === 'notDetermined') await AdMob.requestTrackingAuthorization();
       } catch (e) { /* 非対応 */ }
     }
+    // ios-only:end
     let rewarded = false;
     AdMob.addListener('interstitialAdDismissed', () => finish('inter'));
     AdMob.addListener('interstitialAdFailedToShow', () => finish('inter'));
